@@ -1,2 +1,37 @@
 package elecSim
+# This is the CAPTAIN event display.  It's starting out very simple, but I
+# imagine it will become much more complete.
 
+# This is required for the documentation.
+manager Clark McGrew <clark.mcgrew@stonybrook.edu>
+author Clark McGrew <clark.mcgrew@stonybrook.edu>
+
+# The packages used by this one.  Only direct dependencies should be
+# included. 
+use captEvent
+use testBase
+use captainPolicy 
+use eventDisplay
+use ROOT * LCG_Interfaces
+
+# Build the documentation.
+document doxygen doxygen -group=documentation *.cxx *.hxx ../doc/*.dox
+
+# Build information used by packages that use this one.
+macro elecSim_cppflags " -DELECSIM_USED "
+macro elecSim_linkopts " -L$(ELECSIMROOT)/$(elecSim_tag)"
+macro_append elecSim_linkopts " -lelecSim "
+macro elecSim_stamps " $(elecSimstamp) $(linkdefstamp) "
+
+# The paths to find this library and it's executables
+path_remove LD_LIBRARY_PATH "$(ELECSIMROOT)" 
+path_prepend LD_LIBRARY_PATH "$(ELECSIMROOT)/$(elecSim_tag)"
+
+path_remove PATH "$(ELECSIMROOT)"
+path_prepend PATH "$(ELECSIMROOT)/$(elecSim_tag)"
+
+library elecSim *.cxx *.hxx 
+
+# The main application
+application ELECSIM ../app/elecSim.cxx
+macro_append ELECSIM_dependencies " elecSim " 

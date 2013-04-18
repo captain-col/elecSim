@@ -1,0 +1,61 @@
+This is the file of parameters to control the electronics simulation.
+
+The integration window for the trigger.
+< elecSim.simple.trigger.window = 200 ns > 
+
+The trigger threshold in MeV.
+< elecSim.simple.trigger.threshold = 5 MeV >
+
+The time between triggers.  Part of this is dead time, part of it is the
+integration.  
+< elecSim.simple.trigger.integrationTime = 1.5 ms >
+
+The offset between the trigger condition being met and the trigger.
+< elecSim.simple.trigger.offset = 0 ns >
+
+The probability that the electron will recombine with the argon ion.
+< elecSim.simple.recombinationProb = 0.66 >
+
+The activation (ionization) energy for argon
+< elecSim.simple.activationEnergy = 23.6 eV >
+
+The Liquid Argon drift velocity to use. 
+< elecSim.simple.drift.velocity = 1.6 mm/mus >
+
+The Liquid Argon diffusion coefficient to use.  This is from Shibamura et
+al, "Ratio of Diffusion coefficient to electron mobility", PR A20, 1979
+< elecSim.simple.drift.diffusion = 15 cm2/s >
+
+The electron lifetime.
+< elecSim.simple.drift.life = 2 ms >
+
+The electronics noise
+< elecSim.simple.noiseSigma = 20 >
+
+The amplifier rise time
+< elecSim.simple.amplifier.riseTime = 1000 ns >
+
+The amplifier gain for the collection wires.
+< elecSim.simple.amplifier.collectionGain = 1 >
+
+The amplifier gain for the induction wires.
+< elecSim.simple.amplifier.inductionGain = 3 >
+
+The digitization "frequency" (actually the time per bin).
+< elecSim.simple.digitization.step = 250 ns >
+
+The digitization threshold.  A signal level over this triggers saving a
+digit.   This is the difference between the signal and the pedestal.
+< elecSim.simple.digitization.threshold = 1000 >
+
+The digitization pedestal.
+< elecSim.simple.digitization.pedestal = 1000 >
+
+The ADC full range.
+< elecSim.simple.digitization.range = 4096 >
+
+The pre-threshold time to save into a digit.
+< elecSim.simple.digitization.preTrigger = 3000 ns >
+
+The post signal time to save into a digit.
+< elecSim.simple.digitization.postTrigger = 6000 ns >
