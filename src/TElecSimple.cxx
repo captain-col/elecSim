@@ -7,6 +7,7 @@
 #include <HEPUnits.hxx>
 #include <TGeomIdManager.hxx>
 #include <TManager.hxx>
+#include <TPulseMCDigit.hxx>
 #include <CaptGeomId.hxx>
 
 #include <TGeoManager.h>
@@ -76,22 +77,29 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.amplifier.riseTime");
 
-    // The gain of the amplifier for the collection plane.
+    // The gain of the amplifier for the collection plane.  This must be
+    // matched to the range of the ADC.
     fAmplifierCollectionGain
         = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.amplifier.collectionGain");
+            "elecSim.simple.amplifier.gain.collection");
 
     // The gain of the amplifier for the induction planes.
     fAmplifierInductionGain
         = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.amplifier.inductionGain");
+            "elecSim.simple.amplifier.gain.induction");
+
+    // The gain of the amplifier for the induction planes.
+    fAmplifierPMTGain
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.amplifier.gain.pmt");
 
     // The time step for each digitization bin.
     fDigitStep
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.digitization.step");
 
-    // The pedestal
+    // The threshold to start digitizing a pulse.  This is specified in ADC
+    // above pedestal.
     fDigitThreshold 
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.digitization.threshold");
@@ -103,7 +111,7 @@ CP::TElecSimple::TElecSimple() {
 
     // The ADC range
     fDigitRange 
-        = CP::TRuntimeParameters::Get().GetParameterD(
+        = CP::TRuntimeParameters::Get().GetParameterI(
             "elecSim.simple.digitization.range");
 
     // The amount of time to save before a threshold crossing.
@@ -167,9 +175,16 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
     DoubleVector collectedCharge(chargeBins);
     DoubleVector shapedCharge(chargeBins);
 
+    // Simulate the (ganged) PMT single.
+    TMCChannelId pmt(1,0,0);
+    LightSignal(event,pmt,collectedCharge);
+    ShapeCharge(pmt,collectedCharge,shapedCharge);
+    DigitizeCharge(event,pmt,shapedCharge);
+
     // For each wire in the detector, figure out the signal.  The loop is done
     // this way so that we don't need to know how many planes and wires are
     // being simulated.
+    int count = 0;
     for (int plane = 0; plane < 5; ++plane) {
         // Check to see if this plane exists, quit if it doesn't.
         if (!CP::TManager::Get().GeomId().CdId(
@@ -178,10 +193,12 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
             // Check to see if the wire exists.  Quit if it doesn't
             if (!CP::TManager::Get().GeomId().CdId(
                     CP::GeomId::Captain::Wire(plane,wire))) break;
-            if (!CollectCharge(event,plane,wire,collectedCharge)) continue;
-            AddNoise(plane,collectedCharge);
-            ShapeCharge(plane,wire,collectedCharge,shapedCharge);
-            DigitizeCharge(event,plane,wire,shapedCharge);
+            TMCChannelId channel(0,plane,wire);
+            if (!DriftCharge(event,channel,collectedCharge)) continue;
+            if ((++count % 100) == 0) CaptLog("Channel " << channel);
+            AddNoise(channel,collectedCharge);
+            ShapeCharge(channel,collectedCharge,shapedCharge);
+            DigitizeCharge(event,channel,shapedCharge);
         }
     }
     
@@ -241,8 +258,45 @@ void CP::TElecSimple::GenerateTriggers(CP::TEvent& event,
     }
 }
 
-bool CP::TElecSimple::CollectCharge(CP::TEvent& event, int plane, int wire,
-                                    DoubleVector& out) {
+void CP::TElecSimple::LightSignal(CP::TEvent& event,
+                                  CP::TMCChannelId chan,
+                                  DoubleVector& out) {
+
+    for (DoubleVector::iterator t = out.begin(); t != out.end(); ++t) {
+        *t = 0;
+    }
+
+    // Check that the event has the truth hits.
+    CP::THandle<CP::TDataVector> truthHits 
+        = event.Get<CP::TDataVector>("truth/g4Hits");
+
+    for (CP::TDataVector::iterator h = truthHits->begin();
+         h != truthHits->end();
+         ++h) {
+        CP::THandle<CP::TG4HitContainer> g4Hits =
+            (*h)->Get<CP::TG4HitContainer>(".");
+        for (CP::TG4HitContainer::const_iterator h = g4Hits->begin(); 
+             h != g4Hits->end();
+             ++h) {
+            const CP::TG4HitSegment* seg 
+                = dynamic_cast<const CP::TG4HitSegment*>((*h));
+            double startT = seg->GetStartT();
+            double photons 
+                = fRecombination*seg->GetEnergyDeposit()/fActivationEnergy;
+
+            // Add the electron to the collected charge.
+            double deltaT = startT - fStartIntegration;
+            std::size_t timeBin = deltaT/fDigitStep;
+            if (timeBin >= out.size()) continue;
+
+            out[timeBin] += photons;
+        }
+    }
+}
+
+bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
+                                  CP::TMCChannelId channel,
+                                  DoubleVector& out) {
 
     for (DoubleVector::iterator t = out.begin(); t != out.end(); ++t) {
         *t = 0;
@@ -253,6 +307,10 @@ bool CP::TElecSimple::CollectCharge(CP::TEvent& event, int plane, int wire,
         event.Get<CP::TG4HitContainer>("truth/g4Hits/drift");
     if (!g4Hits) return false;
 
+    if (channel.GetType() != 0) return false;
+    int plane = channel.GetSequence();
+    int wire = channel.GetNumber();
+    
     // Move to the frame of the wire being simulated.
     CP::TManager::Get().Geometry(); // just in case...
     if (!CP::TManager::Get().GeomId().CdId(
@@ -325,6 +383,9 @@ bool CP::TElecSimple::CollectCharge(CP::TEvent& event, int plane, int wire,
                 driftTime = gRandom->Gaus(driftTime,driftSigma/fDriftVelocity);
             }
 
+            // Remove electrons that don't survive to the wires.
+            if (gRandom->Exp(fElectronLife) < driftTime) continue;
+
             // Find the distance to the wire.
             double wireDistance = local[0];
             wireDistance = gRandom->Gaus(wireDistance,driftSigma);
@@ -337,6 +398,7 @@ bool CP::TElecSimple::CollectCharge(CP::TEvent& event, int plane, int wire,
             std::size_t timeBin = deltaT/fDigitStep;
             if (timeBin >= out.size()) continue;
 
+            
             // BAD! BAD! BAD! I'm assuming that the signal doesn't vary
             // depending on how far the electron is from the wire.
             out[timeBin] += 1.0;
@@ -344,33 +406,44 @@ bool CP::TElecSimple::CollectCharge(CP::TEvent& event, int plane, int wire,
         }
     }
 
-    return (100<totalCharge);
+    // A typical MIP will generate thousands of electrons per ~2000 mm, so
+    // this is a very low threshold.  If a wire sees less than 10, then it
+    // really didn't see anything.
+    return (10<totalCharge);
 }
 
-void CP::TElecSimple::AddNoise(int plane, DoubleVector& out) {
+void CP::TElecSimple::AddNoise(CP::TMCChannelId channel, DoubleVector& out) {
     int window = 10*fAmplifierRise/fDigitStep;
     int first = out.size()+1;
     int last = 0;
     for (std::size_t i=0; i<out.size(); ++i) {
         if (out[i] > 0.5) {
             last = i;
-            if (first > out.size()) first = i;
+            if (first > (int) out.size()) first = i;
         }
     }
     first = first-window;
     if (first < 0) first = 0;
     last = last+window;
-    if (last > out.size()) last = out.size();
+    if (last > (int) out.size()) last = out.size();
     for (int i = first; i<last; ++i) {
         out[i] += gRandom->Gaus(0,fNoiseSigma);
     }
 }
 
-void CP::TElecSimple::ShapeCharge(int plane, int wire,
+void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
                                   const DoubleVector& in,
                                   DoubleVector& out) {
-    // It might be worth using an FFT...
-
+    bool bipolar = false;
+    double gain = fAmplifierCollectionGain;
+    if (channel.GetType() == 0 && channel.GetSequence() != 0) {
+        bipolar = true;
+        gain = fAmplifierInductionGain;
+    }
+    if (channel.GetType() == 1) {
+        gain = fAmplifierPMTGain;
+    }
+    
     for (DoubleVector::iterator t = out.begin(); t != out.end(); ++t) {
         *t = 0;
     }
@@ -380,12 +453,12 @@ void CP::TElecSimple::ShapeCharge(int plane, int wire,
         i < in.size(); ++i) {
         std::size_t conv = i;
         double val = in[i];
-        if (std::abs(val) < 0.1) continue;
-        if (plane == 0) val *= fAmplifierCollectionGain;
-        else {
-            val -= last;
-            val *= fAmplifierInductionGain;
+        if (std::abs(val) < 0.1) {
+            last = in[i];
+            continue;
         }
+        if (bipolar) val -= last;
+        val *= gain;
         for (double t = 0.0; t<7*fAmplifierRise && conv < in.size(); 
              t += fDigitStep) {
             double shape = t*std::exp(-t/fAmplifierRise)/fAmplifierRise;
@@ -396,10 +469,39 @@ void CP::TElecSimple::ShapeCharge(int plane, int wire,
     }
 }
 
-void CP::TElecSimple::DigitizeCharge(CP::TEvent& ev, int plane, int wire,
+void CP::TElecSimple::DigitizeCharge(CP::TEvent& ev, 
+                                     CP::TMCChannelId chan,
                                      const DoubleVector& in) {
     DoubleVector::const_iterator scan = in.begin();
     DoubleVector::const_iterator start = scan;
+
+    // Get the digits container, and create it if it doesn't exist.
+    CP::THandle<CP::TDigitContainer> digits;
+    if (chan.GetType() == 0) {
+        digits = ev.Get<CP::TDigitContainer>("~/digits/drift");
+    }
+    else {
+        digits = ev.Get<CP::TDigitContainer>("~/digits/pmt");
+    }
+    if (!digits) {
+        CP::THandle<CP::TDataVector> dv
+            = ev.Get<CP::TDataVector>("~/digits");
+        if (!dv) {
+            CP::TDataVector* t = new CP::TDataVector("digits");
+            ev.AddDatum(t);
+            dv = ev.Get<CP::TDataVector>("~/digits");
+        }
+        if (chan.GetType() == 0) {
+            CP::TDigitContainer* dg = new CP::TDigitContainer("drift");
+            dv->AddDatum(dg);
+            digits = ev.Get<CP::TDigitContainer>("~/digits/drift");
+        }
+        else {
+            CP::TDigitContainer* dg = new CP::TDigitContainer("pmt");
+            dv->AddDatum(dg);
+            digits = ev.Get<CP::TDigitContainer>("~/digits/pmt");
+        }
+    }
 
     int startOffset = fDigitPreTrigger/fDigitStep;
     int endOffset = fDigitPostTrigger/fDigitStep;
@@ -416,15 +518,20 @@ void CP::TElecSimple::DigitizeCharge(CP::TEvent& ev, int plane, int wire,
                 ++scan;
             }
             // Now copy to the output
-            double startTime = fDigitStep*(start-in.begin());
-            int i = 0;
+            int startBin = (start-in.begin());
+            CP::TPulseDigit::Vector adc;
+            CP::TMCDigit::ContributorContainer contrib;
             for (DoubleVector::const_iterator t = start; t != scan; ++t) {
-                std::cout << " " << plane << " " << wire
-                          << " " << startTime 
-                          << " " << in.size()
-                          << " " << i++ 
-                          << " " << *t << std::endl;
+                // The scale factor between charge and digitized charge is set
+                // using the elecSim.simple.amplifier.collectionGain (or
+                // inductionGain)
+                int ival = (*t) + fDigitPedestal;
+                ival = std::max(0,std::min(ival,fDigitRange));
+                adc.push_back(ival);
             }
+            CP::TPulseMCDigit* digit 
+                = new TPulseMCDigit(chan,startBin,adc,contrib);
+            digits->push_back(digit);
             start = scan;
         }
         if (scan != in.end()) ++scan;

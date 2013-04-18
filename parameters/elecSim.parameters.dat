@@ -35,24 +35,30 @@ The electronics noise
 The amplifier rise time
 < elecSim.simple.amplifier.riseTime = 1000 ns >
 
-The amplifier gain for the collection wires.
-< elecSim.simple.amplifier.collectionGain = 1 >
+The amplifier gain for the collection wires.  The gain must be matched to
+the range of the ADC.
+< elecSim.simple.amplifier.gain.collection = 0.1 >
 
-The amplifier gain for the induction wires.
-< elecSim.simple.amplifier.inductionGain = 3 >
+The amplifier gain for the induction wires.  The gain must be matched to
+the range of the ADC.
+< elecSim.simple.amplifier.gain.induction = 0.3 >
+
+The amplifier gain for the ganged PMTs.  The gain must be matched to
+the range of the ADC.
+< elecSim.simple.amplifier.gain.pmt = 0.0001 >
 
 The digitization "frequency" (actually the time per bin).
 < elecSim.simple.digitization.step = 250 ns >
 
 The digitization threshold.  A signal level over this triggers saving a
 digit.   This is the difference between the signal and the pedestal.
-< elecSim.simple.digitization.threshold = 1000 >
+< elecSim.simple.digitization.threshold = 20 >
 
 The digitization pedestal.
-< elecSim.simple.digitization.pedestal = 1000 >
+< elecSim.simple.digitization.pedestal = 2000 >
 
 The ADC full range.
-< elecSim.simple.digitization.range = 4096 >
+< elecSim.simple.digitization.range = 4095 >
 
 The pre-threshold time to save into a digit.
 < elecSim.simple.digitization.preTrigger = 3000 ns >

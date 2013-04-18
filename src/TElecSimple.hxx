@@ -2,6 +2,7 @@
 #define TElecSimple_hxx_seen
 
 #include <TEvent.hxx>
+#include <TMCChannelId.hxx>
 
 namespace CP {
     class TElecSimple;
@@ -55,14 +56,20 @@ private:
     /// The wire noise level.
     double fNoiseSigma;
 
-    // The rise time for the amplifier
+    /// The rise time for the amplifier
     double fAmplifierRise;
 
-    // The gain of the amplifier for the collection plane.
+    /// The gain of the amplifier for the collection plane.  This must be
+    /// matched to the range of the ADC.
     double fAmplifierCollectionGain;
 
-    // The gain of the amplifier for the induction planes.
+    /// The gain of the amplifier for the induction planes.  This must be
+    /// matched to the range of the ADC.
     double fAmplifierInductionGain;
+
+    /// The gain of the amplifier for the ganged PMTs.  This must be
+    /// matched to the range of the ADC.
+    double fAmplifierPMTGain;
 
     /// The time step for each digitization bin.
     double fDigitStep;
@@ -74,7 +81,7 @@ private:
     double fDigitPedestal;
 
     /// The ADC range
-    double fDigitRange;
+    int fDigitRange;
 
     /// The amount of time to save before a threshold crossing.
     double fDigitPreTrigger;
@@ -86,19 +93,22 @@ private:
     /// in the elecSim.parameters.dat file.
     void GenerateTriggers(CP::TEvent& ev, DoubleVector& triggers);
 
+    /// Fill a vector full of the charge arrival times for the PMTS.
+    void LightSignal(CP::TEvent& ev, CP::TMCChannelId chan, DoubleVector& out);
+
     /// Fill a vector full of the charge arrival times for a particular wire.
-    bool CollectCharge(CP::TEvent& ev, int plane, int wire, DoubleVector& out);
+    bool DriftCharge(CP::TEvent& ev, CP::TMCChannelId chan, DoubleVector& out);
 
     /// Add noise to a vector of charge arrival times.
-    void AddNoise(int plane, DoubleVector& out);
+    void AddNoise(CP::TMCChannelId channel, DoubleVector& out);
     
     /// Fill a vector with the amplified values for the charge.  
-    void ShapeCharge(int plane, int wire,
+    void ShapeCharge(CP::TMCChannelId channel,
                      const DoubleVector& in, DoubleVector& out);
 
     /// Translate the shaped charge into digitized values.  This adds the
     /// digits to the event.
-    void DigitizeCharge(CP::TEvent& ev, int plane, int wire, 
+    void DigitizeCharge(CP::TEvent& ev, CP::TMCChannelId channel,
                         const DoubleVector& in);
 };
 #endif
