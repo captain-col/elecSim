@@ -89,6 +89,19 @@ private:
     /// The amount of time to save after a threshold crossing.
     double fDigitPostTrigger;
 
+    /// Add an elecSim "Header" to pass necessary constants to the
+    /// calibration.  The header consists of several TRealDatum arrays indexed
+    /// by the calibration type.  The index is defined as:
+    ///
+    /// * truth/eHeader/digitStep: The time step per bin.
+    /// * truth/eHeader/gain:      The gain.
+    /// * truth/eHeader/pedestal:  The pedestal.
+    ///
+    /// Each array is indexed by the plane [as defined in the MCChannelId, 0)
+    /// X, 1) V, 2) U].  The light sensor calibrations are then saved in index
+    /// 3.
+    void AddElecSimHeader(CP::TEvent& ev);
+
     /// Find the trigger times for an event.  This is controlled by paramters
     /// in the elecSim.parameters.dat file.
     void GenerateTriggers(CP::TEvent& ev, DoubleVector& triggers);

@@ -8,6 +8,7 @@
 #include <TGeomIdManager.hxx>
 #include <TManager.hxx>
 #include <TPulseMCDigit.hxx>
+#include <TRealDatum.hxx>
 #include <CaptGeomId.hxx>
 
 #include <TGeoManager.h>
@@ -16,6 +17,7 @@
 #include <utility>
 #include <vector>
 #include <algorithm>
+#include <memory>
 
 CP::TElecSimple::TElecSimple() {
     CaptLog("Starting the electronics simulation");
@@ -155,6 +157,9 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
 
     CP::TManager::Get().Geometry();
 
+    // Add the elecSim header to truth.
+    AddElecSimHeader(event);
+
     // Figure out when the triggers will be.  This is usuall "just zero".
     DoubleVector triggerTimes;
     GenerateTriggers(event,triggerTimes);
@@ -203,6 +208,56 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
     }
     
     return;
+}
+
+void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
+    CP::THandle<CP::TDataVector> truth = event.Get<CP::TDataVector>("truth");
+    truth->AddDatum(new CP::TDataVector("elecSim"));
+    CP::THandle<CP::TDataVector> header = event.Get<CP::TDataVector>("elecSim");
+
+    // Fill the digit steps.
+    std::auto_ptr<CP::TRealDatum> digitStep(new CP::TRealDatum("digitStep"));
+    digitStep->GetVector().clear();
+    digitStep->push_back(fDigitStep);
+    digitStep->push_back(fDigitStep);
+    digitStep->push_back(fDigitStep);
+    digitStep->push_back(fDigitStep);
+    header->AddDatum(digitStep.release());
+
+    // Fill the pedestals
+    std::auto_ptr<CP::TRealDatum> pedestal(new CP::TRealDatum("pedestal"));
+    pedestal->GetVector().clear();
+    pedestal->push_back(fDigitPedestal);
+    pedestal->push_back(fDigitPedestal);
+    pedestal->push_back(fDigitPedestal);
+    pedestal->push_back(fDigitPedestal);
+    header->AddDatum(pedestal.release());
+
+    // Fill the gains.
+    std::auto_ptr<CP::TRealDatum> gain(new CP::TRealDatum("gain"));
+    gain->GetVector().clear();
+    gain->push_back(fAmplifierCollectionGain);
+    gain->push_back(fAmplifierInductionGain);
+    gain->push_back(fAmplifierInductionGain);
+    gain->push_back(fAmplifierPMTGain);
+    header->AddDatum(gain.release());
+
+    /// Fill the shape times.
+    std::auto_ptr<CP::TRealDatum> shapeTime(new CP::TRealDatum("shape"));
+    shapeTime->GetVector().clear();
+    shapeTime->push_back(fAmplifierRise);
+    shapeTime->push_back(fAmplifierRise);
+    shapeTime->push_back(fAmplifierRise);
+    shapeTime->push_back(fAmplifierRise);
+    header->AddDatum(shapeTime.release());
+
+    /// Fill the drift velocity and electron lifetime.
+    std::auto_ptr<CP::TRealDatum> argonState(new CP::TRealDatum("argon"));
+    argonState->GetVector().clear();
+    argonState->push_back(fDriftVelocity);
+    argonState->push_back(fElectronLife);
+    header->AddDatum(argonState.release());
+
 }
 
 void CP::TElecSimple::GenerateTriggers(CP::TEvent& event,
