@@ -1,0 +1,27 @@
+/*! \mainpage The elecSim Library
+
+\anchor elecSim
+
+The electronics simulation.  The purpose of this program is to produce an
+output file which will simulate the output from the real electronics. The
+input is a file produced by the detector simulation, which contains "hits"
+as defined by GEANT4, in other words an energy deposit in an active part of
+the detector.
+
+The application ELECSIM.exe should be run with an input file created by
+nd280mc, as a minimum you need to do:
+
+\verbatim
+ELECSIM.exe  <inputfile> -o <outputfile>
+\endverbatim
+
+The simulation for each part of the detector consists of:
+
+-# The process by which the deposited energy is transformed into a charge 
+   measured at the sensor (e.g. the wire)
+-# The simulation of the signal produced by the sensor.
+-# How that signal is then recorded by the front end electronics.
+
+See related pages for release history and bug list.
+
+*/
