@@ -1,6 +1,5 @@
 package elecSim
-# This is the CAPTAIN event display.  It's starting out very simple, but I
-# imagine it will become much more complete.
+# This is the CAPTAIN electronics simulation.
 
 # This is required for the documentation.
 manager Clark McGrew <clark.mcgrew@stonybrook.edu>
