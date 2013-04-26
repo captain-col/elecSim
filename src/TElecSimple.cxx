@@ -13,6 +13,7 @@
 
 #include <TGeoManager.h>
 #include <TRandom.h>
+#include <TVirtualFFT.h>
 
 #include <utility>
 #include <vector>
@@ -32,6 +33,11 @@ CP::TElecSimple::TElecSimple() {
     fThreshold 
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.trigger.threshold");
+
+    // The time step for each digitization bin.
+    fDigitStep
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.digitization.step");
 
     // The time between triggers.
     fIntegrationTime
@@ -70,9 +76,16 @@ CP::TElecSimple::TElecSimple() {
             "elecSim.simple.drift.life");
 
     // The wire noise level.
-    fNoiseSigma
-        = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.noiseSigma");
+    double noise 
+        = CP::TRuntimeParameters::Get().GetParameterD("elecSim.simple.noise");
+
+    if (noise > 0) {
+        fNoiseSigma = std::sqrt(noise*fDigitStep);
+    }
+    else {
+        fNoiseSigma = 0.0;
+    }
+    CaptLog("Noise " << noise << " " << fNoiseSigma);
 
     // The rise time for the amplifier
     fAmplifierRise
@@ -95,11 +108,6 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.amplifier.gain.pmt");
 
-    // The time step for each digitization bin.
-    fDigitStep
-        = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.digitization.step");
-
     // The threshold to start digitizing a pulse.  This is specified in ADC
     // above pedestal.
     fDigitThreshold 
@@ -111,10 +119,15 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.digitization.pedestal");
 
-    // The ADC range
-    fDigitRange 
+    // The ADC maximum
+    fDigitMaximum 
         = CP::TRuntimeParameters::Get().GetParameterI(
-            "elecSim.simple.digitization.range");
+            "elecSim.simple.digitization.maximum");
+
+    // The ADC range
+    fDigitMinimum 
+        = CP::TRuntimeParameters::Get().GetParameterI(
+            "elecSim.simple.digitization.minimum");
 
     // The amount of time to save before a threshold crossing.
     fDigitPreTrigger
@@ -126,6 +139,8 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.digitization.postTrigger");
 
+    fFFT = NULL;
+    fInvertFFT = NULL;
 }
 
 CP::TElecSimple::~TElecSimple() {}
@@ -171,16 +186,17 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
          triggerTime != triggerTimes.end();
          ++triggerTime) {
         fStartIntegration = std::min(fStartIntegration, 
-                                     *triggerTime - 0.01*unit::ms);
+                                     *triggerTime - 1.5*unit::ms);
         fStopIntegration = std::max(fStopIntegration,
                                     *triggerTime + 1.5*unit::ms);
     }
     
     int chargeBins = (fStopIntegration - fStartIntegration)/fDigitStep;
+    chargeBins = 2*(1+chargeBins/2);
     DoubleVector collectedCharge(chargeBins);
     DoubleVector shapedCharge(chargeBins);
 
-    // Simulate the (ganged) PMT single.
+    // Simulate the (ganged) PMT signal.
     TMCChannelId pmt(1,0,0);
     LightSignal(event,pmt,collectedCharge);
     ShapeCharge(pmt,collectedCharge,shapedCharge);
@@ -199,8 +215,8 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
             if (!CP::TManager::Get().GeomId().CdId(
                     CP::GeomId::Captain::Wire(plane,wire))) break;
             TMCChannelId channel(0,plane,wire);
-            if (!DriftCharge(event,channel,collectedCharge)) continue;
             if ((++count % 100) == 0) CaptLog("Channel " << channel);
+            if (!DriftCharge(event,channel,collectedCharge)) continue;
             AddNoise(channel,collectedCharge);
             ShapeCharge(channel,collectedCharge,shapedCharge);
             DigitizeCharge(event,channel,shapedCharge);
@@ -212,9 +228,19 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
 
 void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
     CP::THandle<CP::TDataVector> truth = event.Get<CP::TDataVector>("truth");
-    truth->AddDatum(new CP::TDataVector("elecSim"));
-    CP::THandle<CP::TDataVector> header = event.Get<CP::TDataVector>("elecSim");
+    if (!truth) {
+        CaptError("No truth information for this event)");
+        return;
+    }
 
+    truth->AddDatum(new CP::TDataVector("elecSimple"));
+    CP::THandle<CP::TDataVector> header 
+        = truth->Get<CP::TDataVector>("elecSimple");
+    if (!header) {
+        CaptError("Error adding the elecSimple header");
+        return;
+    }
+                  
     // Fill the digit steps.
     std::auto_ptr<CP::TRealDatum> digitStep(new CP::TRealDatum("digitStep"));
     digitStep->GetVector().clear();
@@ -377,6 +403,7 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
     double masterStart[3];
     double masterStop[3];
 
+    double startedElectrons = 0.0;
     double totalCharge = 0.0;
     // Check for every hit.
     for (CP::TG4HitContainer::const_iterator h = g4Hits->begin(); 
@@ -393,20 +420,34 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
         masterStop[2] = seg->GetStopZ();
         double stopT = seg->GetStopT();
         
+        for (int i=0; i<3; ++i) {
+            master[i] = 0.5*masterStart[i] + 0.5*masterStop[i];
+        }
+
         // Check if we should simulate this hit.  If it's too far from the
         // wire, just skip it.  The electrons drift from local positive Z
         // towards zero.  The length of the wire is along Y.
-        gGeoManager->MasterToLocal(masterStart,local);
+        gGeoManager->MasterToLocal(master,local);
 
         // Define 15 mm as a long ways from the wire...
-        if (std::abs(local[0]) > 6*unit::mm) {
+        if (std::abs(local[0]) > 3*unit::mm) {
             continue;
         }
         
+        // The weight to add for each electon.  This is setup so that the
+        // effect of the weighting is "canceled" by the effect of the
+        // digitization.  That means that the weight is related to 1/gain,
+        // where the gain is the number of electrons per ADC digit.
+        double weight = std::max(fAmplifierCollectionGain, 
+                                 fAmplifierInductionGain);
+        weight = std::max(4.0,1/weight);
+
         // This is close, so find the mean number of electrons generated.
         double electrons 
             = (1-fRecombination)*seg->GetEnergyDeposit()/fActivationEnergy;
-        int nElectrons = gRandom->Gaus(electrons,sqrt(electrons))+0.5;
+        int nElectrons = gRandom->Gaus(electrons,sqrt(electrons))/weight+0.5;
+
+        startedElectrons += electrons;
 
         // Now simulate each electron...
         for (int e = 0; e<nElectrons; ++e) {
@@ -451,44 +492,42 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
             // Add the electron to the collected charge.
             double deltaT = driftTime - fStartIntegration;
             std::size_t timeBin = deltaT/fDigitStep;
-            if (timeBin >= out.size()) continue;
-
+            if (timeBin >= out.size()) {
+                CaptError("Drift out of time window " << driftTime/unit::ms
+                          << " " << timeBin
+                          << " " << out.size());
+                continue;
+            }
             
             // BAD! BAD! BAD! I'm assuming that the signal doesn't vary
-            // depending on how far the electron is from the wire.
-            out[timeBin] += 1.0;
-            totalCharge += 1.0;
+            // depending on how far the electron is from the wire.  This
+            // matters for the induction wires.
+            out[timeBin] += weight;
+            totalCharge += weight;
         }
     }
 
-    // A typical MIP will generate thousands of electrons per ~2000 mm, so
-    // this is a very low threshold.  If a wire sees less than 10, then it
-    // really didn't see anything.
-    return (10<totalCharge);
+    // A typical MIP will generate ~2000 electrons per mm, so this is a very
+    // low threshold.  If a wire sees less than 10, then it really didn't see
+    // anything.
+    return (10 < totalCharge);
 }
 
 void CP::TElecSimple::AddNoise(CP::TMCChannelId channel, DoubleVector& out) {
-    int window = 10*fAmplifierRise/fDigitStep;
-    int first = out.size()+1;
-    int last = 0;
-    for (std::size_t i=0; i<out.size(); ++i) {
-        if (out[i] > 0.5) {
-            last = i;
-            if (first > (int) out.size()) first = i;
-        }
-    }
-    first = first-window;
-    if (first < 0) first = 0;
-    last = last+window;
-    if (last > (int) out.size()) last = out.size();
-    for (int i = first; i<last; ++i) {
-        out[i] += gRandom->Gaus(0,fNoiseSigma);
+    if (fNoiseSigma <= 0.1) return;
+    for (DoubleVector::iterator o = out.begin(); o != out.end(); ++o) {
+        (*o) += gRandom->Gaus(0,fNoiseSigma);
     }
 }
 
 void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
                                   const DoubleVector& in,
                                   DoubleVector& out) {
+    if (out.size() != in.size()) {
+        CaptError("Output vector does not match input size.");
+        out.resize(in.size());
+    }
+
     bool bipolar = false;
     double gain = fAmplifierCollectionGain;
     if (channel.GetType() == 0 && channel.GetSequence() != 0) {
@@ -503,24 +542,68 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         *t = 0;
     }
 
-    double last = 0.0;
-    for(std::size_t i = 0;
-        i < in.size(); ++i) {
-        std::size_t conv = i;
-        double val = in[i];
-        if (std::abs(val) < 0.1) {
-            last = in[i];
-            continue;
+    // The normalization factor per transform;
+    double norm = 1.0/std::sqrt(1.0*in.size());
+
+    // Take the FFT of the response model.  This will allocate new FFTs if
+    // it's required.
+    if (in.size() != fResponseFFT.size()) {
+        CaptLog("Initialize the FFT for convolutions");
+        int len = in.size();
+        if (fFFT) delete fFFT;
+        fFFT = TVirtualFFT::FFT(1,&len,"R2C EX K");
+        if (len != (int) in.size()) {
+            CaptError("Invalid length for FFT");
+            CaptError("     original length: " << in.size());
+            CaptError("     allocated length: " << len);
         }
+        len = in.size();
+        if (fInvertFFT) delete fInvertFFT;
+        CaptLog("Initialize the Inverted FFT for convolutions");
+        fInvertFFT = TVirtualFFT::FFT(1,&len,"C2R EX K");
+        if (len != (int) in.size()) {
+            CaptError("Invalid length for inverse FFT");
+            CaptError("     original length: " << in.size());
+            CaptError("     allocated length: " << len);
+        }
+        CaptLog("Create the response FFT");
+        fResponseFFT.resize(in.size());
+        for (int i = 0; i<len; ++i) {
+            double val = i*fDigitStep/fAmplifierRise;
+            val = (val<40) ? fDigitStep*val*std::exp(-val)/fAmplifierRise: 0.0;
+            fFFT->SetPoint(i,val);
+        }
+        fFFT->Transform();
+        for (int i = 0; i<len; ++i) {
+            double rl, im;
+            fFFT->GetPointComplex(i,rl,im);
+            fResponseFFT[i] = std::complex<double>(rl,im);
+        }
+        CaptLog("FFT initialized with " << len << " elements");
+    }
+
+    // Take the FFT of the input.
+    double last = 0.0;
+    for (std::size_t i = 0; i<in.size(); ++i) {
+        double val = in[i];
         if (bipolar) val -= last;
         val *= gain;
-        for (double t = 0.0; t<7*fAmplifierRise && conv < in.size(); 
-             t += fDigitStep) {
-            double shape = t*std::exp(-t/fAmplifierRise)/fAmplifierRise;
-            out[conv] += val * shape;
-            ++conv;
-        }
+        fFFT->SetPoint(i,val);
         last = in[i];
+    }
+    fFFT->Transform();
+
+    // Take the covolution in frequency space and transform back to time.
+    for (std::size_t i=0; i<in.size(); ++i) {
+        double rl, im;
+        fFFT->GetPointComplex(i,rl,im);
+        std::complex<double> v(rl,im);
+        v *= norm*fResponseFFT[i];
+        fInvertFFT->SetPoint(i,v.real(),v.imag());
+    }
+    fInvertFFT->Transform();
+    for (std::size_t i=0; i<out.size(); ++i) {
+        out[i] = norm*fInvertFFT->GetPointReal(i);
     }
 }
 
@@ -576,12 +659,14 @@ void CP::TElecSimple::DigitizeCharge(CP::TEvent& ev,
             int startBin = (start-in.begin());
             CP::TPulseDigit::Vector adc;
             CP::TMCDigit::ContributorContainer contrib;
+            int bin = startBin;
             for (DoubleVector::const_iterator t = start; t != scan; ++t) {
                 // The scale factor between charge and digitized charge is set
                 // using the elecSim.simple.amplifier.collectionGain (or
                 // inductionGain)
-                int ival = (*t) + fDigitPedestal;
-                ival = std::max(0,std::min(ival,fDigitRange));
+                double val = (*t) + fDigitPedestal;
+                int ival = val + 0.5;
+                ival = std::max(fDigitMinimum,std::min(ival,fDigitMaximum));
                 adc.push_back(ival);
             }
             CP::TPulseMCDigit* digit 

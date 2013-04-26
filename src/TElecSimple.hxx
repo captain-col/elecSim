@@ -4,15 +4,21 @@
 #include <TEvent.hxx>
 #include <TMCChannelId.hxx>
 
+#include <vector>
+#include <complex>
+
 namespace CP {
     class TElecSimple;
 };
+
+class TVirtualFFT;
 
 /// This is a very simplistic electronics simulation.  It is not intended for
 /// doing physic, but does capture enough of the behavior to develop software.
 class CP::TElecSimple {
 public:
     typedef std::vector<double> DoubleVector;
+    typedef std::vector< std::complex<double> > ComplexVector;
     TElecSimple();
     ~TElecSimple();
 
@@ -80,8 +86,11 @@ private:
     /// The pedestal
     double fDigitPedestal;
 
-    /// The ADC range
-    int fDigitRange;
+    /// The ADC maximum value.
+    int fDigitMaximum;
+
+    /// The ADC minimum value.
+    int fDigitMinimum;
 
     /// The amount of time to save before a threshold crossing.
     double fDigitPreTrigger;
@@ -118,6 +127,15 @@ private:
     /// Fill a vector with the amplified values for the charge.  
     void ShapeCharge(CP::TMCChannelId channel,
                      const DoubleVector& in, DoubleVector& out);
+
+    /// An FFT used to for the convolution.
+    TVirtualFFT* fFFT;
+
+    /// An FFT used to invert for the convolution
+    TVirtualFFT* fInvertFFT;
+
+    /// A buffers to hold the FFT of delta function response.
+    ComplexVector fResponseFFT;
 
     /// Translate the shaped charge into digitized values.  This adds the
     /// digits to the event.
