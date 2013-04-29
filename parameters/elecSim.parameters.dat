@@ -59,13 +59,13 @@ digit.   This is the difference between the signal and the pedestal.
 < elecSim.simple.digitization.threshold = 20 >
 
 The digitization pedestal.
-< elecSim.simple.digitization.pedestal = 0 >
+< elecSim.simple.digitization.pedestal = 2048 >
 
 The ADC maximum value.
-< elecSim.simple.digitization.maximum = 409500 >
+< elecSim.simple.digitization.maximum = 4095 >
 
 The ADC minimum value.
-< elecSim.simple.digitization.minimum = -1000000 >
+< elecSim.simple.digitization.minimum = 0 >
 
 The pre-threshold time to save into a digit.
 < elecSim.simple.digitization.preTrigger = 10000 ns >
