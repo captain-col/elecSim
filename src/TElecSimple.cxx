@@ -659,7 +659,6 @@ void CP::TElecSimple::DigitizeCharge(CP::TEvent& ev,
             int startBin = (start-in.begin());
             CP::TPulseDigit::Vector adc;
             CP::TMCDigit::ContributorContainer contrib;
-            int bin = startBin;
             for (DoubleVector::const_iterator t = start; t != scan; ++t) {
                 // The scale factor between charge and digitized charge is set
                 // using the elecSim.simple.amplifier.collectionGain (or
