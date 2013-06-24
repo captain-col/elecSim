@@ -243,7 +243,7 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
                   
     // Fill the digit steps.
     std::auto_ptr<CP::TRealDatum> digitStep(new CP::TRealDatum("digitStep"));
-    digitStep->GetVector().clear();
+    digitStep->clear();
     digitStep->push_back(fDigitStep);
     digitStep->push_back(fDigitStep);
     digitStep->push_back(fDigitStep);
@@ -252,7 +252,7 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
 
     // Fill the pedestals
     std::auto_ptr<CP::TRealDatum> pedestal(new CP::TRealDatum("pedestal"));
-    pedestal->GetVector().clear();
+    pedestal->clear();
     pedestal->push_back(fDigitPedestal);
     pedestal->push_back(fDigitPedestal);
     pedestal->push_back(fDigitPedestal);
@@ -261,7 +261,7 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
 
     // Fill the gains.
     std::auto_ptr<CP::TRealDatum> gain(new CP::TRealDatum("gain"));
-    gain->GetVector().clear();
+    gain->clear();
     gain->push_back(fAmplifierCollectionGain);
     gain->push_back(fAmplifierInductionGain);
     gain->push_back(fAmplifierInductionGain);
@@ -270,7 +270,7 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
 
     /// Fill the shape times.
     std::auto_ptr<CP::TRealDatum> shapeTime(new CP::TRealDatum("shape"));
-    shapeTime->GetVector().clear();
+    shapeTime->clear();
     shapeTime->push_back(fAmplifierRise);
     shapeTime->push_back(fAmplifierRise);
     shapeTime->push_back(fAmplifierRise);
@@ -279,7 +279,7 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
 
     /// Fill the drift velocity and electron lifetime.
     std::auto_ptr<CP::TRealDatum> argonState(new CP::TRealDatum("argon"));
-    argonState->GetVector().clear();
+    argonState->clear();
     argonState->push_back(fDriftVelocity);
     argonState->push_back(fElectronLife);
     header->AddDatum(argonState.release());
