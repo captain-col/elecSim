@@ -60,7 +60,7 @@ private:
     double fElectronLife;
 
     /// The wire noise level.
-    double fNoiseSigma;
+    double fWireNoise;
 
     /// The rise time for the amplifier
     double fAmplifierRise;
@@ -77,11 +77,20 @@ private:
     /// matched to the range of the ADC.
     double fAmplifierPMTGain;
 
+    /// The digitization noise.  This is the total noise contributed by the
+    /// electronics (after the shaping).  It is in units of ADC counts.
+    double fDigitNoise;
+
     /// The time step for each digitization bin.
     double fDigitStep;
 
     /// The threshold to start digitization.
     double fDigitThreshold;
+
+    /// The averaging time to determine local pedestal given in number of
+    /// samples.  It is specified in the parameter file in terms of the
+    /// amplifier rise time.
+    int fDigitAveraging;
 
     /// The pedestal
     double fDigitPedestal;
@@ -121,8 +130,8 @@ private:
     /// Fill a vector full of the charge arrival times for a particular wire.
     bool DriftCharge(CP::TEvent& ev, CP::TMCChannelId chan, DoubleVector& out);
 
-    /// Add noise to a vector of charge arrival times.
-    void AddNoise(CP::TMCChannelId channel, DoubleVector& out);
+    /// Add the wire noise to a vector of charge arrival times.
+    void AddWireNoise(CP::TMCChannelId channel, DoubleVector& out);
     
     /// Fill a vector with the amplified values for the charge.  
     void ShapeCharge(CP::TMCChannelId channel,

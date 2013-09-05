@@ -77,15 +77,16 @@ CP::TElecSimple::TElecSimple() {
 
     // The wire noise level.
     double noise 
-        = CP::TRuntimeParameters::Get().GetParameterD("elecSim.simple.noise");
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.wire.noise");
 
     if (noise > 0) {
-        fNoiseSigma = std::sqrt(noise*fDigitStep);
+        fWireNoise = std::sqrt(noise*fDigitStep);
     }
     else {
-        fNoiseSigma = 0.0;
+        fWireNoise = 0.0;
     }
-    CaptLog("Noise " << noise << " " << fNoiseSigma);
+    CaptLog("Noise " << noise << " " << fWireNoise);
 
     // The rise time for the amplifier
     fAmplifierRise
@@ -114,6 +115,11 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.digitization.threshold");
 
+    // The noise introduced during digitization
+    fDigitNoise
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.digitization.noise");
+
     // The pedestal
     fDigitPedestal 
         = CP::TRuntimeParameters::Get().GetParameterD(
@@ -138,6 +144,13 @@ CP::TElecSimple::TElecSimple() {
     fDigitPostTrigger
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.digitization.postTrigger");
+
+    // The averaging time given in units of rise time.
+    double averaging
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.digitization.averaging");
+    averaging = averaging*fAmplifierRise+1.0;
+    fDigitAveraging = averaging/fDigitStep + 0.5;
 
     fFFT = NULL;
     fInvertFFT = NULL;
@@ -217,7 +230,7 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
             TMCChannelId channel(0,plane,wire);
             if ((++count % 100) == 0) CaptLog("Channel " << channel);
             if (!DriftCharge(event,channel,collectedCharge)) continue;
-            AddNoise(channel,collectedCharge);
+            AddWireNoise(channel,collectedCharge);
             ShapeCharge(channel,collectedCharge,shapedCharge);
             DigitizeCharge(event,channel,shapedCharge);
         }
@@ -513,10 +526,11 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
     return (10 < totalCharge);
 }
 
-void CP::TElecSimple::AddNoise(CP::TMCChannelId channel, DoubleVector& out) {
-    if (fNoiseSigma <= 0.1) return;
+void CP::TElecSimple::AddWireNoise(CP::TMCChannelId channel, 
+                                   DoubleVector& out) {
+    if (fWireNoise <= 0.1) return;
     for (DoubleVector::iterator o = out.begin(); o != out.end(); ++o) {
-        (*o) += gRandom->Gaus(0,fNoiseSigma);
+        (*o) += gRandom->Gaus(0,fWireNoise);
     }
 }
 
@@ -641,12 +655,25 @@ void CP::TElecSimple::DigitizeCharge(CP::TEvent& ev,
         }
     }
 
+    // Look through the vector of samples for a sample above the threshold.
+    // If a sample is found, then prepare a digit.
     int startOffset = fDigitPreTrigger/fDigitStep;
     int endOffset = fDigitPostTrigger/fDigitStep;
     double threshold = fDigitThreshold; 
     while (scan != in.end()) {
         while (start < scan - startOffset) ++start;
-        if (*scan > threshold) {
+        DoubleVector::const_iterator avg 
+            = scan-int(fAmplifierRise/fDigitStep)-1;
+        double ped = 0.0;
+        double cnt = 0.0;
+        while (avg > scan - fDigitAveraging) {
+            if (avg == in.begin()) break;
+            ped += *avg;
+            cnt += 1;
+            --avg;
+        }
+        ped /= cnt;
+        if (*scan > ped+threshold) {
             int scanStop = startOffset+endOffset/fDigitStep;
             int belowThres = 0;
             while (scan != in.end() 
@@ -663,7 +690,9 @@ void CP::TElecSimple::DigitizeCharge(CP::TEvent& ev,
                 // The scale factor between charge and digitized charge is set
                 // using the elecSim.simple.amplifier.collectionGain (or
                 // inductionGain)
-                double val = (*t) + fDigitPedestal;
+                double val = (*t);
+                val += fDigitPedestal;
+                val += gRandom->Gaus(0,fDigitNoise);
                 int ival = val + 0.5;
                 ival = std::max(fDigitMinimum,std::min(ival,fDigitMaximum));
                 adc.push_back(ival);

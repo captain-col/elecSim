@@ -31,19 +31,20 @@ The electron lifetime.
 
 The electronics noise quoted in effective electrons per second.  According
 to talk at the Sante Fe collaboration meeting on 1 Feb 2013, the effective
-noise rate is 600 electrons per 1 us, (600 MHz).
-< elecSim.simple.noise = 6000 MHz >
+noise rate is 600 electrons per 1 us, (600 MHz).  This is the noise that
+comes before the amplifier shaping.
+< elecSim.simple.wire.noise = 6000 MHz >
 
 The amplifier shape peaking time.
 < elecSim.simple.amplifier.riseTime = 1000 ns >
 
 The amplifier gain for the collection wires.  The gain must be matched to
 the range of the ADC.
-< elecSim.simple.amplifier.gain.collection = 0.5 >
+< elecSim.simple.amplifier.gain.collection = 0.10 >
 
 The amplifier gain for the induction wires.  The gain must be matched to
 the range of the ADC.
-< elecSim.simple.amplifier.gain.induction = 0.5 >
+< elecSim.simple.amplifier.gain.induction = 0.10 >
 
 The amplifier gain for the ganged PMTs.  The gain must be matched to
 the range of the ADC.
@@ -52,11 +53,20 @@ the range of the ADC.
 The digitization "frequency" (actually the time per bin).  This should be
 about 1/4 of the shape peaking time.  The electronics specs have not been
 set yet.
-< elecSim.simple.digitization.step = 250 ns >
+< elecSim.simple.digitization.step = 500 ns >
 
 The digitization threshold.  A signal level over this triggers saving a
-digit.   This is the difference between the signal and the pedestal.
+digit.   This is the difference between the current signal and the averaged
+over the previous measurements.
 < elecSim.simple.digitization.threshold = 20 >
+
+The threshold averaging period.  This is the time that the pedestal is
+averaged over and is given in units of rise time.
+< elecSim.simple.digitization.averaging = 20.0 >
+
+The digitization noise that is not affected by the amplifier shaping.  This
+noise is given in ADC counts.
+< elecSim.simple.digitization.noise = 4.0 >
 
 The digitization pedestal.
 < elecSim.simple.digitization.pedestal = 2048 >
@@ -68,7 +78,7 @@ The ADC minimum value.
 < elecSim.simple.digitization.minimum = 0 >
 
 The pre-threshold time to save into a digit.
-< elecSim.simple.digitization.preTrigger = 10000 ns >
+< elecSim.simple.digitization.preTrigger = 20000 ns >
 
 The post signal time to save into a digit.
-< elecSim.simple.digitization.postTrigger = 15000 ns >
+< elecSim.simple.digitization.postTrigger = 35000 ns >
