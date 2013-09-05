@@ -20,7 +20,7 @@ The activation (ionization) energy for argon
 < elecSim.simple.activationEnergy = 23.6 eV >
 
 The Liquid Argon drift velocity to use. 
-< elecSim.simple.drift.velocity = 1.6 mm/mus >
+< elecSim.simple.drift.velocity = 1.6 mm/us >
 
 The Liquid Argon diffusion coefficient to use.  This is from Shibamura et
 al, "Ratio of Diffusion coefficient to electron mobility", PR A20, 1979
