@@ -25,6 +25,12 @@ public:
     void operator()(CP::TEvent& event);
 
 private:
+    /// The amount of time to simulate before the trigger.
+    double fPreTriggerTime;
+
+    /// The amount of time to simulate after the trigger.
+    double fPostTriggerTime;
+
     /// The integration window for the trigger.
     double fIntegrationWindow;
 

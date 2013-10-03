@@ -23,6 +23,14 @@
 CP::TElecSimple::TElecSimple() {
     CaptLog("Starting the electronics simulation");
 
+    fPreTriggerTime
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.preTriggerTime");
+
+    fPostTriggerTime
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.postTriggerTime");
+
     // The integration window for the trigger.
     fIntegrationWindow 
         = CP::TRuntimeParameters::Get().GetParameterD(
@@ -199,9 +207,9 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
          triggerTime != triggerTimes.end();
          ++triggerTime) {
         fStartIntegration = std::min(fStartIntegration, 
-                                     *triggerTime - 1.5*unit::ms);
+                                     *triggerTime - fPreTriggerTime);
         fStopIntegration = std::max(fStopIntegration,
-                                    *triggerTime + 1.5*unit::ms);
+                                    *triggerTime + fPostTriggerTime);
     }
     
     int chargeBins = (fStopIntegration - fStartIntegration)/fDigitStep;
@@ -416,6 +424,15 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
     double masterStart[3];
     double masterStop[3];
 
+        
+    // The weight to add for each electon.  This is setup so that the
+    // effect of the weighting is "canceled" by the effect of the
+    // digitization.  That means that the weight is related to 1/gain,
+    // where the gain is the number of electrons per ADC digit.
+    double weight = std::max(fAmplifierCollectionGain, 
+                             fAmplifierInductionGain);
+    weight = 0.5*std::min(8.0,std::max(1.0,1/weight));
+
     double startedElectrons = 0.0;
     double totalCharge = 0.0;
     // Check for every hit.
@@ -446,30 +463,23 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
         if (std::abs(local[0]) > 3*unit::mm) {
             continue;
         }
-        
-        // The weight to add for each electon.  This is setup so that the
-        // effect of the weighting is "canceled" by the effect of the
-        // digitization.  That means that the weight is related to 1/gain,
-        // where the gain is the number of electrons per ADC digit.
-        double weight = std::max(fAmplifierCollectionGain, 
-                                 fAmplifierInductionGain);
-        weight = std::max(4.0,1/weight);
 
         // This is close, so find the mean number of electrons generated.
         double electrons 
             = (1-fRecombination)*seg->GetEnergyDeposit()/fActivationEnergy;
-        int nElectrons = gRandom->Gaus(electrons,sqrt(electrons))/weight+0.5;
 
-        startedElectrons += electrons;
+        int nElectrons = 0.5 + gRandom->Gaus(electrons,sqrt(electrons))/weight;
+
+        startedElectrons += nElectrons;
 
         // Now simulate each electron...
         for (int e = 0; e<nElectrons; ++e) {
             double v = gRandom->Uniform();
             // Find the location
             for (int i=0; i<3; ++i) {
-                master[i] = v*masterStart[i] + (1-v)*masterStop[i];
+                master[i] = v*masterStart[i] + (1.0-v)*masterStop[i];
             }
-            double depositT = v*startT + (1 - v)*stopT;
+            double depositT = v*startT + (1.0 - v)*stopT;
 
             // The electrons drift from local positive Z towards zero.  The
             // length of the wire is along Y.
@@ -483,21 +493,26 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
 
             // Find the diffusion in position.
             double driftSigma 
-                = std::sqrt(2.0*fDiffusionCoeff*driftDistance/fDriftVelocity);
-
+                = std::sqrt(2.0*fDiffusionCoeff*driftDistance/fDriftVelocity
+                            + 0.001);
+            
             // Find the drift time.  If necessary, do the diffusion time
             // spread.
             double driftTime = depositT + driftDistance/fDriftVelocity;
             if (driftSigma > 1E-6) {
-                driftTime = gRandom->Gaus(driftTime,driftSigma/fDriftVelocity);
+                double timeSigma = driftSigma/fDriftVelocity;
+                driftTime = gRandom->Gaus(driftTime,timeSigma);
             }
 
             // Remove electrons that don't survive to the wires.
-            if (gRandom->Exp(fElectronLife) < driftTime) continue;
+            double driftLife = gRandom->Exp(fElectronLife);
+            if (driftLife < driftTime) continue;
 
             // Find the distance to the wire.
             double wireDistance = local[0];
-            wireDistance = gRandom->Gaus(wireDistance,driftSigma);
+            if (driftSigma>1E-6) {
+                wireDistance = gRandom->Gaus(wireDistance,driftSigma);
+            }
 
             // BAD, BAD, BAD... I'm assuming the wire spacing is 3 mm.
             if (std::abs(wireDistance) > 1.5*unit::mm) continue;
@@ -565,7 +580,7 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         CaptLog("Initialize the FFT for convolutions");
         int len = in.size();
         if (fFFT) delete fFFT;
-        fFFT = TVirtualFFT::FFT(1,&len,"R2C EX K");
+        fFFT = TVirtualFFT::FFT(1,&len,"R2C K");
         if (len != (int) in.size()) {
             CaptError("Invalid length for FFT");
             CaptError("     original length: " << in.size());
@@ -574,7 +589,7 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         len = in.size();
         if (fInvertFFT) delete fInvertFFT;
         CaptLog("Initialize the Inverted FFT for convolutions");
-        fInvertFFT = TVirtualFFT::FFT(1,&len,"C2R EX K");
+        fInvertFFT = TVirtualFFT::FFT(1,&len,"C2R K");
         if (len != (int) in.size()) {
             CaptError("Invalid length for inverse FFT");
             CaptError("     original length: " << in.size());
@@ -617,16 +632,14 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
     }
     fInvertFFT->Transform();
     for (std::size_t i=0; i<out.size(); ++i) {
-        out[i] = norm*fInvertFFT->GetPointReal(i);
+        out[i] = norm*fInvertFFT->GetPointReal(i) 
+            + gRandom->Gaus(0,fDigitNoise);
     }
 }
 
 void CP::TElecSimple::DigitizeCharge(CP::TEvent& ev, 
                                      CP::TMCChannelId chan,
                                      const DoubleVector& in) {
-    DoubleVector::const_iterator scan = in.begin();
-    DoubleVector::const_iterator start = scan;
-
     // Get the digits container, and create it if it doesn't exist.
     CP::THandle<CP::TDigitContainer> digits;
     if (chan.GetType() == 0) {
@@ -655,53 +668,84 @@ void CP::TElecSimple::DigitizeCharge(CP::TEvent& ev,
         }
     }
 
+    // An iterator to the sample being examined.
+    DoubleVector::const_iterator scan = in.begin();
+
+    // An iterator to the first sample that is included in the digit.
+    DoubleVector::const_iterator start = scan;
+
+    if (fDigitPreTrigger < 1*unit::ns || fDigitPostTrigger < 1*unit::ns) {
+        // The pre or post trigger times are set to zero, so don't zero
+        // suppress.  Copy the entire pulse to the output.
+        CP::TPulseDigit::Vector adc;
+        CP::TMCDigit::ContributorContainer contrib;
+        for (DoubleVector::const_iterator t = in.begin(); t != in.end(); ++t) {
+            // The scale factor between charge and digitized charge is set
+            // using the elecSim.simple.amplifier.collectionGain (or
+            // inductionGain)
+            double val = (*t);
+            val += fDigitPedestal;
+            int ival = val + 0.5;
+            ival = std::max(fDigitMinimum,std::min(ival,fDigitMaximum));
+            adc.push_back(ival);
+        }
+        CP::TPulseMCDigit* digit = new TPulseMCDigit(chan,0,adc,contrib);
+        digits->push_back(digit);
+        return;
+    }
+
+    // Apply the zero suppression.
+
     // Look through the vector of samples for a sample above the threshold.
     // If a sample is found, then prepare a digit.
     int startOffset = fDigitPreTrigger/fDigitStep;
     int endOffset = fDigitPostTrigger/fDigitStep;
-    double threshold = fDigitThreshold; 
     while (scan != in.end()) {
+        // Check to see if the first sample to include in a digit should be
+        // adjusted.
         while (start < scan - startOffset) ++start;
-        DoubleVector::const_iterator avg 
-            = scan-int(fAmplifierRise/fDigitStep)-1;
-        double ped = 0.0;
-        double cnt = 0.0;
-        while (avg > scan - fDigitAveraging) {
-            if (avg == in.begin()) break;
-            ped += *avg;
-            cnt += 1;
-            --avg;
+        // If the current sample is below the threshold, then skip to the next
+        // sample and start again.
+        if (std::abs(*scan) < fDigitThreshold) {
+            ++scan;
+            continue;
         }
-        ped /= cnt;
-        if (*scan > ped+threshold) {
-            int scanStop = startOffset+endOffset/fDigitStep;
-            int belowThres = 0;
-            while (scan != in.end() 
-                   && (0 < --scanStop || belowThres < endOffset)) {
-                if (std::abs(*scan) < threshold) ++belowThres;
-                else belowThres = 0;
-                ++scan;
-            }
-            // Now copy to the output
-            int startBin = (start-in.begin());
-            CP::TPulseDigit::Vector adc;
-            CP::TMCDigit::ContributorContainer contrib;
-            for (DoubleVector::const_iterator t = start; t != scan; ++t) {
-                // The scale factor between charge and digitized charge is set
-                // using the elecSim.simple.amplifier.collectionGain (or
-                // inductionGain)
-                double val = (*t);
-                val += fDigitPedestal;
-                val += gRandom->Gaus(0,fDigitNoise);
-                int ival = val + 0.5;
-                ival = std::max(fDigitMinimum,std::min(ival,fDigitMaximum));
-                adc.push_back(ival);
-            }
-            CP::TPulseMCDigit* digit 
-                = new TPulseMCDigit(chan,startBin,adc,contrib);
-            digits->push_back(digit);
-            start = scan;
+        int aboveThreshold = 0;
+        // Advance the scan point until it's below the threshold again.
+        while (scan != in.end()
+               && fDigitThreshold <= std::abs(*scan)) {
+            ++aboveThreshold;
+            ++scan;
         }
-        if (scan != in.end()) ++scan;
+        // Make sure we have a run of samples above the threshold.
+        if (aboveThreshold < 2) continue;
+        // Sample forward until we have a run of samples below the threshold.
+        int belowThreshold = 0;
+        while (scan != in.end() 
+               && belowThreshold < endOffset) {
+            if (std::abs(*scan) < fDigitThreshold) ++belowThreshold;
+            else belowThreshold = 0;
+            ++scan;
+        }
+        // Now copy to the output.  The new digit is between start and scan.
+        int startBin = (start-in.begin());
+        CP::TPulseDigit::Vector adc;
+        CP::TMCDigit::ContributorContainer contrib;
+        for (DoubleVector::const_iterator t = start; t != scan; ++t) {
+            // The scale factor between charge and digitized charge is set
+            // using the elecSim.simple.amplifier.collectionGain (or
+            // inductionGain)
+            double val = (*t);
+            val += fDigitPedestal;
+            int ival = val + 0.5;
+            ival = std::max(fDigitMinimum,std::min(ival,fDigitMaximum));
+            adc.push_back(ival);
+        }
+        CP::TPulseMCDigit* digit 
+            = new TPulseMCDigit(chan,startBin,adc,contrib);
+        digits->push_back(digit);
+        start = scan;
+        if (scan == in.end()) break;
+        ++scan;
     }
 }

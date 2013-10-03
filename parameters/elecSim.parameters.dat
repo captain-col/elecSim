@@ -1,10 +1,12 @@
 This is the file of parameters to control the electronics simulation.
 
+The amount of time to simulate before the trigger.
+
+< elecSim.simple.preTriggerTime = 200 us >
+< elecSim.simple.postTriggerTime = 800 us >
+
 The integration window for the trigger.
 < elecSim.simple.trigger.window = 500 ns > 
-
-The trigger threshold in MeV.
-< elecSim.simple.trigger.threshold = 5 MeV >
 
 The time between triggers.  Part of this is dead time, part of it is the
 integration.  
@@ -12,6 +14,9 @@ integration.
 
 The offset between the trigger condition being met and the trigger.
 < elecSim.simple.trigger.offset = 0 ns >
+
+The trigger threshold in MeV.
+< elecSim.simple.trigger.threshold = 5 MeV >
 
 The probability that the electron will recombine with the argon ion.
 < elecSim.simple.recombinationProb = 0.66 >
@@ -32,8 +37,8 @@ The electron lifetime.
 The electronics noise quoted in effective electrons per second.  According
 to talk at the Sante Fe collaboration meeting on 1 Feb 2013, the effective
 noise rate is 600 electrons per 1 us, (600 MHz).  This is the noise that
-comes before the amplifier shaping.
-< elecSim.simple.wire.noise = 6000 MHz >
+comes before the amplifier shaping.  
+< elecSim.simple.wire.noise = 600 MHz >
 
 The amplifier shape peaking time.
 < elecSim.simple.amplifier.riseTime = 1000 ns >
@@ -55,18 +60,19 @@ about 1/4 of the shape peaking time.  The electronics specs have not been
 set yet.
 < elecSim.simple.digitization.step = 500 ns >
 
+The digitization noise that is not affected by the amplifier shaping.  This
+noise is given in ADC counts.
+< elecSim.simple.digitization.noise = 2.0 >
+
 The digitization threshold.  A signal level over this triggers saving a
 digit.   This is the difference between the current signal and the averaged
-over the previous measurements.
-< elecSim.simple.digitization.threshold = 20 >
+over the previous measurements.  This is given in ADC counts, but can be a
+floating point value.
+< elecSim.simple.digitization.threshold = 10.0 >
 
 The threshold averaging period.  This is the time that the pedestal is
 averaged over and is given in units of rise time.
 < elecSim.simple.digitization.averaging = 20.0 >
-
-The digitization noise that is not affected by the amplifier shaping.  This
-noise is given in ADC counts.
-< elecSim.simple.digitization.noise = 4.0 >
 
 The digitization pedestal.
 < elecSim.simple.digitization.pedestal = 2048 >
@@ -78,7 +84,7 @@ The ADC minimum value.
 < elecSim.simple.digitization.minimum = 0 >
 
 The pre-threshold time to save into a digit.
-< elecSim.simple.digitization.preTrigger = 20000 ns >
+< elecSim.simple.digitization.preTrigger = 200 us >
 
 The post signal time to save into a digit.
-< elecSim.simple.digitization.postTrigger = 35000 ns >
+< elecSim.simple.digitization.postTrigger = 200 us >
