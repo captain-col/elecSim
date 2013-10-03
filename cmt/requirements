@@ -34,3 +34,6 @@ library elecSim *.cxx *.hxx
 # The main application
 application ELECSIM ../app/elecSim.cxx
 macro_append ELECSIM_dependencies " elecSim " 
+
+application elecSimTUT -check ../test/elecSimTUT.cxx ../test/tut*.cxx
+macro_append elecSimTUT_dependencies " elecSim "
