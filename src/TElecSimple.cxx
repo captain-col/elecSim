@@ -196,9 +196,14 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
     // Add the elecSim header to truth.
     AddElecSimHeader(event);
 
-    // Figure out when the triggers will be.  This is usuall "just zero".
+    // Figure out when the triggers will be.  This is usually "just zero".
     DoubleVector triggerTimes;
     GenerateTriggers(event,triggerTimes);
+
+    if (triggerTimes.empty()) {
+        CaptLog("No trigger in the event");
+        return;
+    }
 
     // Find out the total integration period.
     fStartIntegration = 100*unit::second;
