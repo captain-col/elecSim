@@ -236,7 +236,10 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
             if (!CP::TManager::Get().GeomId().CdId(
                     CP::GeomId::Captain::Wire(plane,wire))) break;
             TMCChannelId channel(0,plane,wire);
-            if ((++count % 100) == 0) CaptLog("Channel " << channel);
+            if ((++count % 100) == 0) {
+                CaptNamedInfo("channel",
+                              "Channel " << channel);
+            }
             if (!DriftCharge(event,channel,collectedCharge)) continue;
             AddWireNoise(channel,collectedCharge);
             ShapeCharge(channel,collectedCharge,shapedCharge);
