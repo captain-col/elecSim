@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 #include <algorithm>
+#include <numeric>
 #include <memory>
 
 CP::TElecSimple::TElecSimple() {
@@ -547,7 +548,7 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
         }
     }
 
-    // A typical MIP will generate ~2000 electrons per mm, so this is a very
+    // A typical MIP will generate ~5000 electrons per mm, so this is a very
     // low threshold.  If a wire sees less than 10, then it really didn't see
     // anything.
     return (10 < totalCharge);
@@ -609,10 +610,18 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         }
         CaptLog("Create the response FFT");
         fResponseFFT.resize(in.size());
+        // Find the normalization for the response
+        double responseNorm = 0.0;
         for (int i = 0; i<len; ++i) {
             double val = i*fDigitStep/fAmplifierRise;
             val = (val<40) ? fDigitStep*val*std::exp(-val)/fAmplifierRise: 0.0;
-            fFFT->SetPoint(i,val);
+            responseNorm += val;
+        }
+        // Fill the response FFT.
+        for (int i = 0; i<len; ++i) {
+            double val = i*fDigitStep/fAmplifierRise;
+            val = (val<40) ? fDigitStep*val*std::exp(-val)/fAmplifierRise: 0.0;
+            fFFT->SetPoint(i,val/responseNorm);
         }
         fFFT->Transform();
         for (int i = 0; i<len; ++i) {
@@ -634,7 +643,7 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
     }
     fFFT->Transform();
 
-    // Take the covolution in frequency space and transform back to time.
+    // Take the convolution in frequency space and transform back to time.
     for (std::size_t i=0; i<in.size(); ++i) {
         double rl, im;
         fFFT->GetPointComplex(i,rl,im);
@@ -644,9 +653,12 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
     }
     fInvertFFT->Transform();
     for (std::size_t i=0; i<out.size(); ++i) {
-        out[i] = norm*fInvertFFT->GetPointReal(i) 
-            + gRandom->Gaus(0,fDigitNoise);
+        out[i] = norm*fInvertFFT->GetPointReal(i);
+        // Add the electronics noise.  This is from the amplifiers (not the
+        // thermal noise).
+        out[i] += gRandom->Gaus(0.0,fDigitNoise);
     }
+
 }
 
 void CP::TElecSimple::DigitizeCharge(CP::TEvent& ev, 
@@ -694,7 +706,8 @@ void CP::TElecSimple::DigitizeCharge(CP::TEvent& ev,
         for (DoubleVector::const_iterator t = in.begin(); t != in.end(); ++t) {
             // The scale factor between charge and digitized charge is set
             // using the elecSim.simple.amplifier.collectionGain (or
-            // inductionGain)
+            // inductionGain) and applied in ShapeCharge.  Here, it's one unit
+            // of charge per digit.
             double val = (*t);
             val += fDigitPedestal;
             int ival = val + 0.5;
