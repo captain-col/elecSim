@@ -319,6 +319,7 @@ void CP::TElecSimple::GenerateTriggers(CP::TEvent& event,
                                        DoubleVector& triggers) {
     triggers.clear();
 
+#ifdef SELF_TRIGGER
     // Check that the event has the truth hits.
     CP::THandle<CP::TDataVector> truthHits 
         = event.Get<CP::TDataVector>("truth/g4Hits");
@@ -366,6 +367,9 @@ void CP::TElecSimple::GenerateTriggers(CP::TEvent& event,
         }
         ++stop;
     }
+#else
+    triggers.push_back(0.0);
+#endif
 }
 
 void CP::TElecSimple::LightSignal(CP::TEvent& event,
