@@ -19,10 +19,10 @@ The trigger threshold in MeV.
 < elecSim.simple.trigger.threshold = 5 MeV >
 
 The probability that the electron will recombine with the argon ion.
-< elecSim.simple.recombinationProb = 0.66 >
+< elecSim.simple.recombinationProb = 0.4291 >
 
 The activation (ionization) energy for argon
-< elecSim.simple.activationEnergy = 23.6 eV >
+< elecSim.simple.activationEnergy = 19.5 eV >
 
 The Liquid Argon drift velocity to use. 
 < elecSim.simple.drift.velocity = 1.6 mm/us >
