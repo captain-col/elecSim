@@ -13,8 +13,13 @@ namespace CP {
 
 class TVirtualFFT;
 
-/// This is a very simplistic electronics simulation.  It is not intended for
-/// doing physic, but does capture enough of the behavior to develop software.
+/// This is a very simple electronics simulation.  The main purpose of the
+/// simple electronics simulation is to capture enough of the detector
+/// response to develop software, but to predict the behavior.  It's a purely
+/// emperical model with lots of tunable parameters, but given that it's a
+/// "fit", it can do a rather quick simulation.  Most importantly, it's a good
+/// test bed for understanding the interaction of the CAPTAIN reconstruction
+/// and calibration to different electronics behaviors.
 class CP::TElecSimple {
 public:
     typedef std::vector<double> DoubleVector;
@@ -25,30 +30,18 @@ public:
     void operator()(CP::TEvent& event);
 
 private:
-    /// The amount of time to simulate before the trigger.
-    double fPreTriggerTime;
+    /// The start of the simulation window.  The FADC time steps are measured
+    /// relative to this time.  The start of the simulation must always
+    /// before the earliest possible trigger, or charge will not be properly
+    /// collected.  In the detector, the start of the integration will be the
+    /// trigger time minus a pre-trigger offset.
+    double fStartSimulation;
 
-    /// The amount of time to simulate after the trigger.
-    double fPostTriggerTime;
+    /// The end of the simulation window.  This needs to be after the start of
+    /// the integration window plus the length of the integration window.
+    double fStopSimulation;
 
-    /// The integration window for the trigger.
-    double fIntegrationWindow;
-
-    /// The energy threshold for a trigger.  This really should be in terms of
-    /// photons, but this doesn't do a light collection simulation.
-    double fThreshold;
-
-    /// The time between triggers.
-    double fIntegrationTime;
-
-    /// The time between triggers.
-    double fTriggerOffset;
-
-    /// The start of the simulation window.
-    double fStartIntegration;
-
-    /// The end of the simulation window.  
-    double fStopIntegration;
+    // Parameters controlling the "physics" of ionization and scintillation. 
 
     /// The drift velocity.
     double fDriftVelocity;
@@ -65,10 +58,58 @@ private:
     /// The electron life time.
     double fElectronLife;
 
-    /// The wire noise level.
+    /// The wire noise level.  This is the amount of thermal noise generated
+    /// in the wires (and is not associated with the amplifier).
     double fWireNoise;
 
-    /// The rise time for the amplifier
+    /// The detection efficiency for a photon.  This should be a function of
+    /// position in the detector, but this is the *simple* electronics
+    /// simulation!  This is expressed in terms of photons collected per MeV.
+    double fPhotonCollection;
+
+    /// The fraction of the light emitted in the short part of the
+    /// scintillation
+    double fShortFraction;
+
+    /// The time constant for the short component of the scintillation.
+    double fShortTime;
+
+    /// The time constant for the long component of the scintillation.
+    double fLongTime;
+
+    /// The number of light sensors in the detector.
+    int fLightSensorCount;
+
+    // Parameters controlling the trigger simulation.
+
+    /// The time window used to generate the trigger.  The current simulation
+    /// trigger has two modes.  In the first mode, (a beam trigger), the
+    /// trigger time is always zero.  In that case, the trigger window should
+    /// be zero or negative.  In the second mode, the trigger window is
+    /// positive, and the deposited energy in the window must be above
+    /// fTriggerThreshold.
+    double fTriggerWindow;
+
+    /// The energy threshold for a trigger.  This really should be in terms of
+    /// photons, but this doesn't do a light collection simulation.
+    double fTriggerThreshold;
+
+    /// The "dead" time between triggers.  The electronics aren't really dead,
+    /// but this is the amount of time before we can accept a new trigger.
+    double fTriggerDeadTime;
+
+    /// The time between triggers.
+    double fTriggerOffset;
+
+    /// The amount of time to simulate before the trigger.
+    double fPreTriggerTime;
+
+    /// The amount of time to simulate after the trigger.
+    double fPostTriggerTime;
+
+    // Parameters controlling the amplifier simulations.
+
+    /// The rise time for the TPC amplifier
     double fAmplifierRise;
 
     /// The gain of the amplifier for the collection plane.  This must be
@@ -83,23 +124,34 @@ private:
     /// matched to the range of the ADC.
     double fAmplifierPMTGain;
 
+    /// The width of the PMT 1 pe peak.  The is the uncertainty on the gain.
+    double fPMTPeak;
+
+    // The digitization parameters.
+
     /// The digitization noise.  This is the total noise contributed by the
     /// electronics (after the shaping).  It is in units of ADC counts.
     double fDigitNoise;
 
     /// The time step for each digitization bin.
     double fDigitStep;
+    
+    /// The time step for the PMT digitiation bins.
+    double fPMTStep;
 
-    /// The threshold to start digitization.
-    double fDigitThreshold;
+    /// The amount of time before the trigger to start digitization.  This
+    /// will specify the "zero" time bin for the event.
+    double fDigitPreTriggerTime;
 
-    /// The averaging time to determine local pedestal given in number of
-    /// samples.  It is specified in the parameter file in terms of the
-    /// amplifier rise time.
-    int fDigitAveraging;
+    /// The amount of time after the trigger to end digitization.  This
+    /// will specify the total number of time bins in an event.
+    double fDigitPostTriggerTime;
 
     /// The pedestal
     double fDigitPedestal;
+
+    /// The slope of the ADC conversion in ADC/mV (i.e. ADC/(input signal)).
+    double fDigitSlope;
 
     /// The ADC maximum value.
     int fDigitMaximum;
@@ -107,19 +159,26 @@ private:
     /// The ADC minimum value.
     int fDigitMinimum;
 
-    /// The amount of time to save before a threshold crossing.
-    double fDigitPreTrigger;
+    /// The threshold to start digitization.  If this is greater than zero,
+    /// then there will be zero suppression applied to the digits.
+    double fDigitThreshold;
 
-    /// The amount of time to save after a threshold crossing.
-    double fDigitPostTrigger;
+    /// The amount of time to save before a threshold crossing.  This only
+    /// applies when there is zero suppression.
+    double fDigitPreThreshold;
+
+    /// The amount of time to save after a threshold crossing.  This only
+    /// applies when there is zero suppression.
+    double fDigitPostThreshold;
 
     /// Add an elecSim "Header" to pass necessary constants to the
     /// calibration.  The header consists of several TRealDatum arrays indexed
     /// by the calibration type.  The index is defined as:
     ///
-    /// * truth/eHeader/digitStep: The time step per bin.
-    /// * truth/eHeader/gain:      The gain.
-    /// * truth/eHeader/pedestal:  The pedestal.
+    /// * truth/elecSimple/digitStep: The time step per bin.
+    /// * truth/elecSimple/gain:      The gain.
+    /// * truth/elecSimple/pedestal:  The pedestal.
+    /// * truth/elecSimple/slope:     The slope of the digitizer in adc/V.
     ///
     /// Each array is indexed by the plane [as defined in the MCChannelId, 0)
     /// X, 1) V, 2) U].  The light sensor calibrations are then saved in index
@@ -130,8 +189,14 @@ private:
     /// in the elecSim.parameters.dat file.
     void GenerateTriggers(CP::TEvent& ev, DoubleVector& triggers);
 
-    /// Fill a vector full of the charge arrival times for the PMTS.
+    /// Fill a vector full of the photon arrival times for the PMTS.
     void LightSignal(CP::TEvent& ev, CP::TMCChannelId chan, DoubleVector& out);
+
+    /// Build the digit for the PMT..  This adds the
+    /// digits to the event.
+    void DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
+                       const DoubleVector& input,
+                       const DoubleVector& triggers);
 
     /// Fill a vector full of the charge arrival times for a particular wire.
     bool DriftCharge(CP::TEvent& ev, CP::TMCChannelId chan, DoubleVector& out);
@@ -152,9 +217,20 @@ private:
     /// A buffers to hold the FFT of delta function response.
     ComplexVector fResponseFFT;
 
-    /// Translate the shaped charge into digitized values.  This adds the
+    /// Translate the shaped wire charge into digitized values.  This adds the
     /// digits to the event.
-    void DigitizeCharge(CP::TEvent& ev, CP::TMCChannelId channel,
-                        const DoubleVector& in);
+    void DigitizeWires(CP::TEvent& ev, CP::TMCChannelId channel,
+                        const DoubleVector& input,
+                        const DoubleVector& triggers);
+
+    /// Find the digits in the input range.  The start is the bin number in
+    /// input to start looking for a new digit at.  The startBin and stopBin
+    /// give the digitization range in the input.  The return value is a pair
+    /// of integers giving the bins in the input to make into a digit.  This
+    /// is where zero suppression will be implemented.
+    std::pair<int,int> FindDigitRange(int start,
+                                      int startBin,
+                                      int stopBin,
+                                      const DoubleVector& input);
 };
 #endif

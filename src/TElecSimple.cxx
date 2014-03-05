@@ -24,39 +24,130 @@
 CP::TElecSimple::TElecSimple() {
     CaptLog("Starting the electronics simulation");
 
-    fPreTriggerTime
-        = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.preTriggerTime");
-
-    fPostTriggerTime
-        = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.postTriggerTime");
-
     // The integration window for the trigger.
-    fIntegrationWindow 
+    fTriggerWindow 
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.trigger.window");
 
     // The energy threshold for a trigger.  This really should be in terms of
     // photons, but this doesn't do a light collection simulation.
-    fThreshold 
+    fTriggerThreshold 
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.trigger.threshold");
+
+    // The time between triggers.
+    fTriggerDeadTime
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.trigger.deadTime");
+
+    // The time between the trigger time being met and the trigger being
+    // formed.
+    fTriggerOffset
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.trigger.offset");
+
+    // The amount of time to simulate before the trigger time.
+    fPreTriggerTime
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.preTriggerTime");
+
+    // The amount of time to simulate after the trigger time.
+    fPostTriggerTime
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.postTriggerTime");
+
+    // The rise time for the amplifier
+    fAmplifierRise
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.amplifier.riseTime");
+
+    // The gain of the amplifier for the collection plane.  This must be
+    // matched to the range of the ADC.
+    fAmplifierCollectionGain
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.amplifier.gain.collection");
+    fAmplifierCollectionGain *= unit::mV/unit::fC;
+
+    // The gain of the amplifier for the induction planes.
+    fAmplifierInductionGain
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.amplifier.gain.induction");
+    fAmplifierInductionGain *= unit::mV/unit::fC;
+
+    // The gain of the amplifier for PMT.  This includes the actual PMT gain,
+    // and any preamps.
+    fAmplifierPMTGain
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.amplifier.gain.pmt");
+
+    // The width of the 1 pe peak.
+    fPMTPeak 
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.amplifier.width");
+
+    // The time step for each PMT digitization bin.
+    fPMTStep
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.digitization.pmtStep");
 
     // The time step for each digitization bin.
     fDigitStep
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.digitization.step");
 
-    // The time between triggers.
-    fIntegrationTime
+    // The amount of time to save before a threshold crossing.
+    fDigitPreTriggerTime
         = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.trigger.integrationTime");
+            "elecSim.simple.digitization.preTriggerTime");
+    if (fDigitPreTriggerTime < 0) fDigitPreTriggerTime = fPreTriggerTime;
 
-    // The time between triggers.
-    fTriggerOffset
+    // The amount of time to save after a threshold crossing.
+    fDigitPostTriggerTime
         = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.trigger.offset");
+            "elecSim.simple.digitization.postTriggerTime");
+    if (fDigitPostTriggerTime < 0) fDigitPostTriggerTime = fPostTriggerTime;
+
+    // The pedestal.  This is then randomized per channel.
+    fDigitPedestal 
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.digitization.pedestal");
+
+    // The slope of the digitizer in ADC/mV.  
+    fDigitSlope
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.digitization.slope");
+    fDigitSlope *= 1.0/unit::mV;
+
+    // The ADC maximum
+    fDigitMaximum 
+        = CP::TRuntimeParameters::Get().GetParameterI(
+            "elecSim.simple.digitization.maximum");
+
+    // The ADC range
+    fDigitMinimum 
+        = CP::TRuntimeParameters::Get().GetParameterI(
+            "elecSim.simple.digitization.minimum");
+
+    // The threshold to start digitizing a pulse.  This is specified in ADC
+    // above pedestal.
+    fDigitThreshold 
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.digitization.threshold");
+
+    // The noise introduced during digitization
+    fDigitNoise
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.digitization.noise");
+
+    // The amount of time to save before a threshold crossing.
+    fDigitPreThreshold
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.digitization.preThreshold");
+
+    // The amount of time to save after a threshold crossing.
+    fDigitPostThreshold
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.digitization.postThreshold");
 
     // The recompination probability
     fRecombination 
@@ -84,6 +175,29 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.drift.life");
 
+    // The probability that a photon generate in LAr will make a
+    // photo-electron.  This includes the PMT response, the light propagation,
+    // and everything else.
+    fPhotonCollection 
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.light.collection");
+
+    fShortFraction 
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.light.shortFraction");
+
+    fShortTime 
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.light.shortTime");
+
+    fLongTime 
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.light.longTime");
+
+    fLightSensorCount 
+        = CP::TRuntimeParameters::Get().GetParameterI(
+            "elecSim.simple.light.sensors");
+
     // The wire noise level.
     double noise 
         = CP::TRuntimeParameters::Get().GetParameterD(
@@ -96,70 +210,6 @@ CP::TElecSimple::TElecSimple() {
         fWireNoise = 0.0;
     }
     CaptLog("Noise " << noise << " " << fWireNoise);
-
-    // The rise time for the amplifier
-    fAmplifierRise
-        = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.amplifier.riseTime");
-
-    // The gain of the amplifier for the collection plane.  This must be
-    // matched to the range of the ADC.
-    fAmplifierCollectionGain
-        = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.amplifier.gain.collection");
-
-    // The gain of the amplifier for the induction planes.
-    fAmplifierInductionGain
-        = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.amplifier.gain.induction");
-
-    // The gain of the amplifier for the induction planes.
-    fAmplifierPMTGain
-        = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.amplifier.gain.pmt");
-
-    // The threshold to start digitizing a pulse.  This is specified in ADC
-    // above pedestal.
-    fDigitThreshold 
-        = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.digitization.threshold");
-
-    // The noise introduced during digitization
-    fDigitNoise
-        = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.digitization.noise");
-
-    // The pedestal
-    fDigitPedestal 
-        = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.digitization.pedestal");
-
-    // The ADC maximum
-    fDigitMaximum 
-        = CP::TRuntimeParameters::Get().GetParameterI(
-            "elecSim.simple.digitization.maximum");
-
-    // The ADC range
-    fDigitMinimum 
-        = CP::TRuntimeParameters::Get().GetParameterI(
-            "elecSim.simple.digitization.minimum");
-
-    // The amount of time to save before a threshold crossing.
-    fDigitPreTrigger
-        = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.digitization.preTrigger");
-
-    // The amount of time to save after a threshold crossing.
-    fDigitPostTrigger
-        = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.digitization.postTrigger");
-
-    // The averaging time given in units of rise time.
-    double averaging
-        = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.digitization.averaging");
-    averaging = averaging*fAmplifierRise+1.0;
-    fDigitAveraging = averaging/fDigitStep + 0.5;
 
     fFFT = NULL;
     fInvertFFT = NULL;
@@ -206,28 +256,31 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
         return;
     }
 
-    // Find out the total integration period.
-    fStartIntegration = 100*unit::second;
-    fStopIntegration = -100*unit::second;
+    // Find out the total integration period.  This is found based off of the
+    // times of the first and last triggers.
+    fStartSimulation = 100*unit::second;
+    fStopSimulation = -100*unit::second;
     for (DoubleVector::iterator triggerTime = triggerTimes.begin();
          triggerTime != triggerTimes.end();
          ++triggerTime) {
-        fStartIntegration = std::min(fStartIntegration, 
+        fStartSimulation = std::min(fStartSimulation, 
                                      *triggerTime - fPreTriggerTime);
-        fStopIntegration = std::max(fStopIntegration,
+        fStopSimulation = std::max(fStopSimulation,
                                     *triggerTime + fPostTriggerTime);
     }
     
-    int chargeBins = (fStopIntegration - fStartIntegration)/fDigitStep;
+    // Simulate the (ganged) PMT signal.
+    for (int i = 0; i<fLightSensorCount; ++i) {
+        TMCChannelId pmt(1,0,i);
+        DoubleVector photonTimes;
+        LightSignal(event,pmt,photonTimes);
+        DigitizeLight(event,pmt,photonTimes,triggerTimes);
+    }
+
+    int chargeBins = (fStopSimulation - fStartSimulation)/fDigitStep;
     chargeBins = 2*(1+chargeBins/2);
     DoubleVector collectedCharge(chargeBins);
     DoubleVector shapedCharge(chargeBins);
-
-    // Simulate the (ganged) PMT signal.
-    TMCChannelId pmt(1,0,0);
-    LightSignal(event,pmt,collectedCharge);
-    ShapeCharge(pmt,collectedCharge,shapedCharge);
-    DigitizeCharge(event,pmt,shapedCharge);
 
     // For each wire in the detector, figure out the signal.  The loop is done
     // this way so that we don't need to know how many planes and wires are
@@ -249,7 +302,7 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
             if (!DriftCharge(event,channel,collectedCharge)) continue;
             AddWireNoise(channel,collectedCharge);
             ShapeCharge(channel,collectedCharge,shapedCharge);
-            DigitizeCharge(event,channel,shapedCharge);
+            DigitizeWires(event,channel,shapedCharge,triggerTimes);
         }
     }
     
@@ -274,37 +327,46 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
     // Fill the digit steps.
     std::auto_ptr<CP::TRealDatum> digitStep(new CP::TRealDatum("digitStep"));
     digitStep->clear();
-    digitStep->push_back(fDigitStep);
-    digitStep->push_back(fDigitStep);
-    digitStep->push_back(fDigitStep);
-    digitStep->push_back(fDigitStep);
+    digitStep->push_back(fDigitStep);  // X Plane
+    digitStep->push_back(fDigitStep);  // V Plane
+    digitStep->push_back(fDigitStep);  // U Plane
+    digitStep->push_back(fPMTStep);  // PMT
     header->AddDatum(digitStep.release());
 
     // Fill the pedestals
     std::auto_ptr<CP::TRealDatum> pedestal(new CP::TRealDatum("pedestal"));
     pedestal->clear();
-    pedestal->push_back(fDigitPedestal);
-    pedestal->push_back(fDigitPedestal);
-    pedestal->push_back(fDigitPedestal);
-    pedestal->push_back(fDigitPedestal);
+    pedestal->push_back(fDigitPedestal);  // X Plane
+    pedestal->push_back(fDigitPedestal);  // V Plane
+    pedestal->push_back(fDigitPedestal);  // U Plane
+    pedestal->push_back(fDigitPedestal);  // PMT
     header->AddDatum(pedestal.release());
 
-    // Fill the gains.
+    // Fill amplifier gains (voltage/(input charge))
     std::auto_ptr<CP::TRealDatum> gain(new CP::TRealDatum("gain"));
     gain->clear();
-    gain->push_back(fAmplifierCollectionGain);
-    gain->push_back(fAmplifierInductionGain);
-    gain->push_back(fAmplifierInductionGain);
-    gain->push_back(fAmplifierPMTGain);
+    gain->push_back(fAmplifierCollectionGain); // X Plane
+    gain->push_back(fAmplifierInductionGain);  // V Plane
+    gain->push_back(fAmplifierInductionGain);  // U Plane
+    gain->push_back(fAmplifierPMTGain);        // PMT
     header->AddDatum(gain.release());
+
+    // Fill the digitizer slopes (ADC/mV).
+    std::auto_ptr<CP::TRealDatum> slope(new CP::TRealDatum("slope"));
+    slope->clear();
+    slope->push_back(fDigitSlope);  // X Plane
+    slope->push_back(fDigitSlope);  // V Plane
+    slope->push_back(fDigitSlope);  // U Plane
+    slope->push_back(1.0);          // PMT
+    header->AddDatum(slope.release());
 
     /// Fill the shape times.
     std::auto_ptr<CP::TRealDatum> shapeTime(new CP::TRealDatum("shape"));
     shapeTime->clear();
-    shapeTime->push_back(fAmplifierRise);
-    shapeTime->push_back(fAmplifierRise);
-    shapeTime->push_back(fAmplifierRise);
-    shapeTime->push_back(fAmplifierRise);
+    shapeTime->push_back(fAmplifierRise);    // X Plane
+    shapeTime->push_back(fAmplifierRise);    // V Plane
+    shapeTime->push_back(fAmplifierRise);    // U Plane
+    shapeTime->push_back(1.0);               // PMT
     header->AddDatum(shapeTime.release());
 
     /// Fill the drift velocity and electron lifetime.
@@ -320,7 +382,11 @@ void CP::TElecSimple::GenerateTriggers(CP::TEvent& event,
                                        DoubleVector& triggers) {
     triggers.clear();
 
-#ifdef SELF_TRIGGER
+    if (fTriggerWindow <= 0) {
+        triggers.push_back(0.0);
+        return;
+    }
+
     // Check that the event has the truth hits.
     CP::THandle<CP::TDataVector> truthHits 
         = event.Get<CP::TDataVector>("truth/g4Hits");
@@ -354,32 +420,28 @@ void CP::TElecSimple::GenerateTriggers(CP::TEvent& event,
             continue;
         }
         // Look for charge in a window.
-        while ( (stop->first - start->first) > fIntegrationWindow) ++start;
+        while ( (stop->first - start->first) > fTriggerWindow) ++start;
         double esum = 0.0;
         for (ETMap::iterator et = start; et != stop; ++et) {
             esum += et->second;
         }
         // If over threshold, then trigger.
-        if (esum > fThreshold) {
+        if (esum > fTriggerThreshold) {
             double trigger = stop->first + fTriggerOffset;
             CaptLog("Trigger at " << trigger/unit::ns << " ns" );
             triggers.push_back(trigger);
-            deadUntil = stop->first + fIntegrationTime;
+            deadUntil = stop->first + fTriggerDeadTime;
         }
         ++stop;
     }
-#else
-    triggers.push_back(0.0);
-#endif
+
 }
 
 void CP::TElecSimple::LightSignal(CP::TEvent& event,
                                   CP::TMCChannelId chan,
-                                  DoubleVector& out) {
+                                  DoubleVector& times) {
 
-    for (DoubleVector::iterator t = out.begin(); t != out.end(); ++t) {
-        *t = 0;
-    }
+    times.clear();
 
     // Check that the event has the truth hits.
     CP::THandle<CP::TDataVector> truthHits 
@@ -396,17 +458,103 @@ void CP::TElecSimple::LightSignal(CP::TEvent& event,
             const CP::TG4HitSegment* seg 
                 = dynamic_cast<const CP::TG4HitSegment*>((*h));
             double startT = seg->GetStartT();
-            double photons 
-                = fRecombination*seg->GetEnergyDeposit()/fActivationEnergy;
+            
+            // Estimate the mean number of photons generated.
+            double photons = fPhotonCollection*seg->GetEnergyDeposit();
 
-            // Add the electron to the collected charge.
-            double deltaT = startT - fStartIntegration;
-            std::size_t timeBin = deltaT/fDigitStep;
-            if (timeBin >= out.size()) continue;
+            // Find the number of photons at a PMT.
+            int nPhotons = gRandom->Poisson(photons);
 
-            out[timeBin] += photons;
+            for (int i=0; i< nPhotons; ++i) {
+                double r = gRandom->Uniform();
+                if (r < fShortFraction) {
+                    double t = gRandom->Exp(fShortTime);
+                    t += startT;
+                    t -= fStartSimulation;
+                    times.push_back(t);
+                }
+                else {
+                    double t = gRandom->Exp(fLongTime);
+                    t += startT;
+                    t -= fStartSimulation;
+                    times.push_back(t);
+                }
+            }
         }
     }
+}
+
+void CP::TElecSimple::DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
+                                    const DoubleVector& input,
+                                    const DoubleVector& triggers) {
+
+    // Get the digits container, and create it if it doesn't exist.
+    CP::THandle<CP::TDigitContainer> digits
+        = ev.Get<CP::TDigitContainer>("~/digits/pmt");
+    if (!digits) {
+        CP::THandle<CP::TDataVector> dv
+            = ev.Get<CP::TDataVector>("~/digits");
+        if (!dv) {
+            CP::TDataVector* t = new CP::TDataVector("digits");
+            ev.AddDatum(t);
+            dv = ev.Get<CP::TDataVector>("~/digits");
+        }
+        CP::TDigitContainer* dg = new CP::TDigitContainer("pmt");
+        dv->AddDatum(dg);
+        digits = ev.Get<CP::TDigitContainer>("~/digits/pmt");
+    }
+
+    int pmtBins = (fStopSimulation-fStartSimulation)/fPMTStep;
+    DoubleVector shapedCharge(pmtBins);
+    
+    // Add the signal for each photon.
+    double signalWidth = 10.0*unit::ns;
+    for (DoubleVector::const_iterator t = input.begin();
+         t != input.end(); ++t) {
+        double pulse = gRandom->Gaus(1.0,fPMTPeak);
+        while (pulse < 0.1) pulse = gRandom->Gaus(1.0,fPMTPeak);
+        for (double val = 0.0; val < 10.0*signalWidth; val += fPMTStep) {
+            int bin = (*t + val)/fPMTStep;
+            double v = *t + 2*val - bin*fPMTStep;
+            double sig = v*std::exp(-1.0-v/signalWidth)/signalWidth;
+            shapedCharge[bin] += sig * pulse;
+        }
+    }
+
+    double pedestal = fDigitPedestal;
+
+    CP::TPulseDigit::Vector adc;
+    for (DoubleVector::const_iterator trigger = triggers.begin();
+         trigger != triggers.end(); ++trigger) {
+        // This is the start time of the digitization window.
+        double startTime = *trigger - fDigitPreTriggerTime;
+        // This is the stop time of the digitization window.
+        double stopTime = *trigger + fDigitPostTriggerTime;
+        // This is the first bin in the digitization window
+        int startBin = startTime/fPMTStep;
+        if (startBin < 0) startBin = 0;
+        // This is the last bin in the digitization window
+        int stopBin = 1 + stopTime/fPMTStep;
+        if (stopBin > (int) shapedCharge.size()) stopBin = shapedCharge.size();
+        // Now copy to the output.  The new digit is between start and scan.
+        CP::TPulseDigit::Vector adc;
+        CP::TMCDigit::ContributorContainer contrib;
+        for (int bin = startBin; bin < stopBin; ++bin) {
+            double val = shapedCharge[bin]*fAmplifierPMTGain;
+            // Shift the baseline to the pedestal value.
+            val += pedestal;
+            // Add the electronics noise.  This is from the electronics, and
+            // therefore comes after the shaping.
+            val += gRandom->Gaus(0.0,0.05*fAmplifierPMTGain);
+            int ival = val;
+            ival = std::max(fDigitMinimum,std::min(ival,fDigitMaximum));
+            adc.push_back(ival);
+        }
+        CP::TPulseMCDigit* digit 
+            = new TPulseMCDigit(channel,0,adc,contrib);
+        digits->push_back(digit);
+    }
+
 }
 
 bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
@@ -442,9 +590,13 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
     // effect of the weighting is "canceled" by the effect of the
     // digitization.  That means that the weight is related to 1/gain,
     // where the gain is the number of electrons per ADC digit.
+#ifdef APPLY_WEIGHT
     double weight = std::max(fAmplifierCollectionGain, 
                              fAmplifierInductionGain);
     weight = 0.5*std::min(8.0,std::max(1.0,1/weight));
+#else
+    double weight = 1.0;
+#endif
 
     double startedElectrons = 0.0;
     double totalCharge = 0.0;
@@ -531,7 +683,7 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
             if (std::abs(wireDistance) > 1.5*unit::mm) continue;
 
             // Add the electron to the collected charge.
-            double deltaT = driftTime - fStartIntegration;
+            double deltaT = driftTime - fStartSimulation;
             std::size_t timeBin = deltaT/fDigitStep;
             if (timeBin >= out.size()) {
                 CaptError("Drift out of time window " << driftTime/unit::ms
@@ -548,9 +700,10 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
         }
     }
 
-    // A typical MIP will generate ~5000 electrons per mm, so this is a very
-    // low threshold.  If a wire sees less than 10, then it really didn't see
-    // anything.
+    // A particle generates 1 electron per 34 eV of deposited energy, so a
+    // typical MIP will generate ~5000 electrons per mm, so this is a very low
+    // threshold.  If a wire sees less than 10, then it really didn't see
+    // anything (ie ~350 eV of deposited energy).
     return (10 < totalCharge);
 }
 
@@ -575,9 +728,6 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
     if (channel.GetType() == 0 && channel.GetSequence() != 0) {
         bipolar = true;
         gain = fAmplifierInductionGain;
-    }
-    if (channel.GetType() == 1) {
-        gain = fAmplifierPMTGain;
     }
     
     for (DoubleVector::iterator t = out.begin(); t != out.end(); ++t) {
@@ -654,24 +804,17 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
     fInvertFFT->Transform();
     for (std::size_t i=0; i<out.size(); ++i) {
         out[i] = norm*fInvertFFT->GetPointReal(i);
-        // Add the electronics noise.  This is from the amplifiers (not the
-        // thermal noise).
-        out[i] += gRandom->Gaus(0.0,fDigitNoise);
     }
 
 }
 
-void CP::TElecSimple::DigitizeCharge(CP::TEvent& ev, 
-                                     CP::TMCChannelId chan,
-                                     const DoubleVector& in) {
+void CP::TElecSimple::DigitizeWires(CP::TEvent& ev, 
+                                    CP::TMCChannelId chan,
+                                    const DoubleVector& in,
+                                    const DoubleVector& triggers) {
     // Get the digits container, and create it if it doesn't exist.
-    CP::THandle<CP::TDigitContainer> digits;
-    if (chan.GetType() == 0) {
-        digits = ev.Get<CP::TDigitContainer>("~/digits/drift");
-    }
-    else {
-        digits = ev.Get<CP::TDigitContainer>("~/digits/pmt");
-    }
+    CP::THandle<CP::TDigitContainer> digits 
+        = ev.Get<CP::TDigitContainer>("~/digits/drift");
     if (!digits) {
         CP::THandle<CP::TDataVector> dv
             = ev.Get<CP::TDataVector>("~/digits");
@@ -680,97 +823,68 @@ void CP::TElecSimple::DigitizeCharge(CP::TEvent& ev,
             ev.AddDatum(t);
             dv = ev.Get<CP::TDataVector>("~/digits");
         }
-        if (chan.GetType() == 0) {
-            CP::TDigitContainer* dg = new CP::TDigitContainer("drift");
-            dv->AddDatum(dg);
-            digits = ev.Get<CP::TDigitContainer>("~/digits/drift");
-        }
-        else {
-            CP::TDigitContainer* dg = new CP::TDigitContainer("pmt");
-            dv->AddDatum(dg);
-            digits = ev.Get<CP::TDigitContainer>("~/digits/pmt");
-        }
+        CP::TDigitContainer* dg = new CP::TDigitContainer("drift");
+        dv->AddDatum(dg);
+        digits = ev.Get<CP::TDigitContainer>("~/digits/drift");
     }
 
-    // An iterator to the sample being examined.
-    DoubleVector::const_iterator scan = in.begin();
+    // Randomize the pedestal since it's going to be slightly different for
+    // each channel.  This doesn't change the integral value of the pedestal
+    // (it always rounds to the same value, but it does shift the probability
+    // of the actual ADC mean.
+    double pedestal = fDigitPedestal + gRandom->Uniform(-0.5, 0.5);
 
-    // An iterator to the first sample that is included in the digit.
-    DoubleVector::const_iterator start = scan;
+    for (DoubleVector::const_iterator trigger = triggers.begin();
+         trigger != triggers.end(); ++trigger) {
+        // This is the start time of the digitization window.
+        double startTime = *trigger - fDigitPreTriggerTime;
+        // This is the stop time of the digitization window.
+        double stopTime = *trigger + fDigitPostTriggerTime;
+        // This is the first bin in the digitization window
+        int startBin = startTime/fDigitStep;
+        if (startBin < 0) startBin = 0;
+        // This is the last bin in the digitization window
+        int stopBin = 1 + stopTime/fDigitStep;
+        if (stopBin > (int) in.size()) stopBin = in.size();
+        // This is the first bin that might end up in a new digit.
+        int lastStop = startBin;
+        // Find all of the possible digits in the digitization window.
+        do {
+            std::pair<int,int> digitRange 
+                = FindDigitRange(lastStop,startBin,stopBin,in);
 
-    if (fDigitPreTrigger < 1*unit::ns || fDigitPostTrigger < 1*unit::ns) {
-        // The pre or post trigger times are set to zero, so don't zero
-        // suppress.  Copy the entire pulse to the output.
-        CP::TPulseDigit::Vector adc;
-        CP::TMCDigit::ContributorContainer contrib;
-        for (DoubleVector::const_iterator t = in.begin(); t != in.end(); ++t) {
-            // The scale factor between charge and digitized charge is set
-            // using the elecSim.simple.amplifier.collectionGain (or
-            // inductionGain) and applied in ShapeCharge.  Here, it's one unit
-            // of charge per digit.
-            double val = (*t);
-            val += fDigitPedestal;
-            int ival = val + 0.5;
-            ival = std::max(fDigitMinimum,std::min(ival,fDigitMaximum));
-            adc.push_back(ival);
-        }
-        CP::TPulseMCDigit* digit = new TPulseMCDigit(chan,0,adc,contrib);
-        digits->push_back(digit);
-        return;
+            // Now copy to the output.  The new digit is between start and scan.
+            CP::TPulseDigit::Vector adc;
+            CP::TMCDigit::ContributorContainer contrib;
+            for (int bin = digitRange.first; bin < digitRange.second; ++bin) {
+                double val = in[bin]*fDigitSlope;
+                // Shift the baseline to the pedestal value.
+                val += pedestal;
+                // Add the electronics noise.  This is from the electronics, and
+                // therefore comes after the shaping.
+                val += gRandom->Gaus(0.0,fDigitNoise);
+                int ival = val;
+                ival = std::max(fDigitMinimum,std::min(ival,fDigitMaximum));
+                adc.push_back(ival);
+            }
+            CP::TPulseMCDigit* digit 
+                = new TPulseMCDigit(chan,digitRange.first-startBin,adc,contrib);
+            digits->push_back(digit);
+            
+            // Setup for the next (possible) digit.
+            lastStop = digitRange.second;
+        } while (lastStop < stopBin);
+
     }
 
-    // Apply the zero suppression.
+}
 
-    // Look through the vector of samples for a sample above the threshold.
-    // If a sample is found, then prepare a digit.
-    int startOffset = fDigitPreTrigger/fDigitStep;
-    int endOffset = fDigitPostTrigger/fDigitStep;
-    while (scan != in.end()) {
-        // Check to see if the first sample to include in a digit should be
-        // adjusted.
-        while (start < scan - startOffset) ++start;
-        // If the current sample is below the threshold, then skip to the next
-        // sample and start again.
-        if (std::abs(*scan) < fDigitThreshold) {
-            ++scan;
-            continue;
-        }
-        int aboveThreshold = 0;
-        // Advance the scan point until it's below the threshold again.
-        while (scan != in.end()
-               && fDigitThreshold <= std::abs(*scan)) {
-            ++aboveThreshold;
-            ++scan;
-        }
-        // Make sure we have a run of samples above the threshold.
-        if (aboveThreshold < 2) continue;
-        // Sample forward until we have a run of samples below the threshold.
-        int belowThreshold = 0;
-        while (scan != in.end() 
-               && belowThreshold < endOffset) {
-            if (std::abs(*scan) < fDigitThreshold) ++belowThreshold;
-            else belowThreshold = 0;
-            ++scan;
-        }
-        // Now copy to the output.  The new digit is between start and scan.
-        int startBin = (start-in.begin());
-        CP::TPulseDigit::Vector adc;
-        CP::TMCDigit::ContributorContainer contrib;
-        for (DoubleVector::const_iterator t = start; t != scan; ++t) {
-            // The scale factor between charge and digitized charge is set
-            // using the elecSim.simple.amplifier.collectionGain (or
-            // inductionGain)
-            double val = (*t);
-            val += fDigitPedestal;
-            int ival = val + 0.5;
-            ival = std::max(fDigitMinimum,std::min(ival,fDigitMaximum));
-            adc.push_back(ival);
-        }
-        CP::TPulseMCDigit* digit 
-            = new TPulseMCDigit(chan,startBin,adc,contrib);
-        digits->push_back(digit);
-        start = scan;
-        if (scan == in.end()) break;
-        ++scan;
-    }
+std::pair<int, int> 
+CP::TElecSimple::FindDigitRange(int start, 
+                                int startBin, 
+                                int stopBin,
+                                const DoubleVector& input) {
+    if (fDigitThreshold < 1) return std::pair<int,int>(startBin,stopBin);
+
+    return std::pair<int,int>(startBin,stopBin);
 }

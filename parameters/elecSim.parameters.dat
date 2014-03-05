@@ -1,81 +1,130 @@
 This is the file of parameters to control the electronics simulation.
 
-The amount of time to simulate before the trigger.
+The amount of time to save in digits before and after the trigger.  This is
+also used to calculate the total time window that will be simulated.  The
+window from min(triggerTime)-preTriggerTime to
+max(triggerTime)+postTriggerTime will be simulated.
 
-< elecSim.simple.preTriggerTime = 200 us >
-< elecSim.simple.postTriggerTime = 800 us >
+< elecSim.simple.preTriggerTime = 50 us >
+< elecSim.simple.postTriggerTime = 700 us >
 
-The integration window for the trigger.
-< elecSim.simple.trigger.window = 500 ns > 
+The integration window for the trigger.  If this is negative then use a
+beam trigger (i.e. a trigger time of 0.0)
+
+< elecSim.simple.trigger.window = -1 > 
 
 The time between triggers.  Part of this is dead time, part of it is the
 integration.  
-< elecSim.simple.trigger.integrationTime = 3 ms >
+
+< elecSim.simple.trigger.deadTime = 1 ms >
 
 The offset between the trigger condition being met and the trigger.
+
 < elecSim.simple.trigger.offset = 0 ns >
 
 The trigger threshold in MeV.
 < elecSim.simple.trigger.threshold = 5 MeV >
 
-The probability that the electron will recombine with the argon ion.
+The number of photons collected per MeV.  This comes from a presentation by
+Ion Stancu on 13 Feb 2014.  He found 0.39 pe/MeV per PMT assuming energy
+deposition at the center of the detector and ?5 cm? pmts.  I've corrected
+it for quantum efficiency (assuming 22%).
+
+< elecSim.simple.light.collection = 0.086 >
+
+The number of PMTs in the detector.
+
+< elecSim.simple.light.sensors = 16 >
+
+The dark noise for the PMTs.
+
+< elecSim.simple.light.darkCurrent = 100 Hz >
+
+The fraction of the light in the short time component of the scintillator.
+This comes from a fit by Ion Stancu (shown on 13 Feb 2014)
+
+< elecSim.simple.light.shortFraction = 0.38 >
+
+The short time constant for the light from the scintillator.  This comes
+from a fit by Ion Stancu (shown on 13 Feb 2014)
+
+< elecSim.simple.light.shortTime = 6.7 ns >
+
+The short time constant for the light from the scintillator.  This comes
+from a fit by Ion Stancu (shown on 13 Feb 2014)
+
+< elecSim.simple.light.longTime = 917 ns >
+
+The probability that the electron will recombine with the argon ion.  This
+is tuned to ICARUS measurements.
 < elecSim.simple.recombinationProb = 0.4291 >
 
 The activation (ionization) energy for argon
 < elecSim.simple.activationEnergy = 19.5 eV >
 
-The Liquid Argon drift velocity to use. 
+The Liquid Argon drift velocity to use.  This corresponds to 500 V/cm
 < elecSim.simple.drift.velocity = 1.6 mm/us >
 
 The Liquid Argon diffusion coefficient to use.  This is from Shibamura et
 al, "Ratio of Diffusion coefficient to electron mobility", PR A20, 1979
+
 < elecSim.simple.drift.diffusion = 15 cm2/s >
 
 The electron lifetime.
+
 < elecSim.simple.drift.life = 2 ms >
 
 The electronics noise quoted in effective electrons per second.  According
-to talk at the Sante Fe collaboration meeting on 1 Feb 2013, the effective
-noise rate is 600 electrons per 1 us, (600 MHz).  This is the noise that
-comes before the amplifier shaping.  
-< elecSim.simple.wire.noise = 600 MHz >
+to talk at the Sante Fe collaboration meeting on 1 Feb 2013, the total
+effective noise rate is 600 electrons per 1 us, (600 MHz).  This parameter
+controls the part of that noise that comes before the amplifier shaping.
+
+< elecSim.simple.wire.noise = 0 MHz >
 
 The amplifier shape peaking time.
+
 < elecSim.simple.amplifier.riseTime = 1000 ns >
 
-The amplifier gain for the collection wires.  The gain must be matched to
-the range of the ADC.
-< elecSim.simple.amplifier.gain.collection = 0.10 >
+The amplifier gain for the collection wires.  The ADC has design gain of
+4.7, 7.8, 14, or 25 mV/fC.  The units are mV/fC.
 
-The amplifier gain for the induction wires.  The gain must be matched to
-the range of the ADC.
-< elecSim.simple.amplifier.gain.induction = 0.10 >
+< elecSim.simple.amplifier.gain.collection = 14.0 >
 
-The amplifier gain for the ganged PMTs.  The gain must be matched to
-the range of the ADC.
-< elecSim.simple.amplifier.gain.pmt = 0.0005 >
+The amplifier gain for the induction wires.  The ADC has design gain of
+4.7, 7.8, 14, or 25 mV/fC.  The units are mV/fC.
+
+< elecSim.simple.amplifier.gain.induction = 14.0 >
+
+The amplifier gain for the PMTs.  A different front end is used that
+for the TPC, so the gains are different.  The units are adc/pe.
+
+< elecSim.simple.amplifier.gain.pmt = 200.0 >
+
+The width of the 1 pe peak (in terms of pe).
+    
+< elecSim.simple.amplifier.width = 0.5 > 
 
 The digitization "frequency" (actually the time per bin).  This should be
 about 1/4 of the shape peaking time.  The electronics specs have not been
 set yet.
+
 < elecSim.simple.digitization.step = 500 ns >
 
 The digitization noise that is not affected by the amplifier shaping.  This
-noise is given in ADC counts.
-< elecSim.simple.digitization.noise = 2.0 >
+noise is given in ADC counts.  This is measured by the uBoone group to be
+about 1.0, but set higher here to make the reconstruction job more
+difficult.  The total noise is about 600 electrons per 1 us. 
 
-The digitization threshold.  A signal level over this triggers saving a
-digit.   This is the difference between the current signal and the averaged
-over the previous measurements.  This is given in ADC counts, but can be a
-floating point value.
-< elecSim.simple.digitization.threshold = 10.0 >
-
-The threshold averaging period.  This is the time that the pedestal is
-averaged over and is given in units of rise time.
-< elecSim.simple.digitization.averaging = 20.0 >
+< elecSim.simple.digitization.noise = 1.0 >
 
 The digitization pedestal.
+
 < elecSim.simple.digitization.pedestal = 2048 >
+
+The digitizer has a design slope of 2.5 ADC per mV of input voltage from
+the amplifier.
+
+< elecSim.simple.digitization.slope = 2.5 >
 
 The ADC maximum value.
 < elecSim.simple.digitization.maximum = 4095 >
@@ -83,8 +132,29 @@ The ADC maximum value.
 The ADC minimum value.
 < elecSim.simple.digitization.minimum = 0 >
 
-The pre-threshold time to save into a digit.
-< elecSim.simple.digitization.preTrigger = 200 us >
+The digitization starts before the trigger by this amount.  If this is less
+than zero, then use elecSim.simple.preTriggerTime.
 
-The post signal time to save into a digit.
-< elecSim.simple.digitization.postTrigger = 200 us >
+< elecSim.simple.digitization.preTriggerTime = -1 >
+< elecSim.simple.digitization.postTriggerTime = -1 >
+
+The digitization threshold.  A signal level over this triggers saving a
+digit.   This is the difference between the current signal and the averaged
+over the previous measurements.  This is given in ADC counts, but can be a
+floating point value.  If this is less than zero, then there is no zero
+suppression. 
+
+< elecSim.simple.digitization.threshold = -1.0 >
+
+The pre-threshold time to save into a digit.  If less than zero, then this is
+the same as elecSim.simple.digitization.preTriggerTime
+< elecSim.simple.digitization.preThreshold = 50 us >
+
+The post signal time to save into a digit.  If less than zero, then this is
+the same as elecSim.simple.digitization.postTriggerTIme
+< elecSim.simple.digitization.postThreshold = 50 us >
+
+The PMT digitizer time step
+
+< elecSim.simple.digitization.pmtStep = 4 ns > 
+
