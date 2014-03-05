@@ -112,7 +112,7 @@ set yet.
 
 The digitization noise that is not affected by the amplifier shaping.  This
 noise is given in ADC counts.  This is measured by the uBoone group to be
-about 1.0, but set higher here to make the reconstruction job more
+less than 1.0, but set higher here to make the reconstruction job more
 difficult.  The total noise is about 600 electrons per 1 us. 
 
 < elecSim.simple.digitization.noise = 1.0 >
@@ -144,7 +144,7 @@ over the previous measurements.  This is given in ADC counts, but can be a
 floating point value.  If this is less than zero, then there is no zero
 suppression. 
 
-< elecSim.simple.digitization.threshold = -1.0 >
+< elecSim.simple.digitization.threshold = -1 >
 
 The pre-threshold time to save into a digit.  If less than zero, then this is
 the same as elecSim.simple.digitization.preTriggerTime

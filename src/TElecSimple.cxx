@@ -517,13 +517,19 @@ void CP::TElecSimple::DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
             int bin = (*t + val)/fPMTStep;
             double v = *t + 2*val - bin*fPMTStep;
             double sig = v*std::exp(-1.0-v/signalWidth)/signalWidth;
-            shapedCharge[bin] += sig * pulse;
+            shapedCharge[bin] += sig * pulse * fAmplifierPMTGain;;
         }
     }
 
-    double pedestal = fDigitPedestal;
+    // Add the electronics noise.  This is from the electronics, and
+    // therefore comes after the shaping.
+    for (DoubleVector::iterator s = shapedCharge.begin();
+         s != shapedCharge.end(); ++s) {
+        *s += gRandom->Gaus(0.0,1.0);
+    }
 
-    CP::TPulseDigit::Vector adc;
+    double pedestal = fDigitPedestal + gRandom->Uniform(-0.5,0.5);
+
     for (DoubleVector::const_iterator trigger = triggers.begin();
          trigger != triggers.end(); ++trigger) {
         // This is the start time of the digitization window.
@@ -536,23 +542,81 @@ void CP::TElecSimple::DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
         // This is the last bin in the digitization window
         int stopBin = 1 + stopTime/fPMTStep;
         if (stopBin > (int) shapedCharge.size()) stopBin = shapedCharge.size();
-        // Now copy to the output.  The new digit is between start and scan.
-        CP::TPulseDigit::Vector adc;
-        CP::TMCDigit::ContributorContainer contrib;
-        for (int bin = startBin; bin < stopBin; ++bin) {
-            double val = shapedCharge[bin]*fAmplifierPMTGain;
-            // Shift the baseline to the pedestal value.
-            val += pedestal;
-            // Add the electronics noise.  This is from the electronics, and
-            // therefore comes after the shaping.
-            val += gRandom->Gaus(0.0,0.05*fAmplifierPMTGain);
-            int ival = val;
-            ival = std::max(fDigitMinimum,std::min(ival,fDigitMaximum));
-            adc.push_back(ival);
-        }
-        CP::TPulseMCDigit* digit 
-            = new TPulseMCDigit(channel,0,adc,contrib);
-        digits->push_back(digit);
+        // This is the first bin that might end up in a new digit.
+        int lastStop = startBin;
+        // The threshold to save a region of the FADC.  If this is negative,
+        // then there isn't any zero suppression.
+        double threshold = 5.0;
+        // The number of bins to save before the threshold is crossed.
+        int preThresholdBins = 1.0*unit::microsecond/fPMTStep;
+        // The number of bins to save after the threshold is crossed.
+        int postThresholdBins = 1.0*unit::microsecond/fPMTStep;
+        // Find all of the possible digits in the digitization window.
+        do {
+            std::pair<int,int> digitRange = std::make_pair(lastStop,stopBin);
+
+            if (threshold > 0) {
+                // Find the first bin in the zero suppressed digit.  The tBin
+                // variable is the bin where the threshold was crossed.
+                int tBin;
+                for (tBin=digitRange.first; tBin<digitRange.second; ++tBin) {
+                    if (shapedCharge[tBin] > threshold) {
+                        digitRange.first = std::max(digitRange.first,
+                                                    tBin - preThresholdBins);
+                        break;
+                    }
+                }
+                // Check to make sure there is a non-zero digit.  If tBin is
+                // at the end of the range, then there isn't a new digit.
+                if (tBin == digitRange.second) {
+                    digitRange.first = tBin;
+                    break;
+                }
+                // Find the last bin in the zero suppressed digit.
+                bool zeroRangeFound = false;
+                do {
+                    // Move to the first bin that is below threshold.
+                    while (shapedCharge[tBin] > threshold 
+                           && tBin < digitRange.second) ++tBin;
+                    // Check if there is a long section of zeros.  This allows
+                    // room for the next preThresholdBins region.
+                    zeroRangeFound = true;
+                    for (int i = tBin;
+                         i<tBin+postThresholdBins+preThresholdBins
+                             && i<digitRange.second;
+                         ++i) {
+                        if (shapedCharge[i] > threshold) {
+                            tBin = i;
+                            zeroRangeFound = false;
+                            break;
+                        }
+                    }
+                } while (!zeroRangeFound);
+                digitRange.second = std::min(digitRange.second,
+                                             tBin + postThresholdBins);
+            }
+
+            CaptNamedInfo("Digitize", channel.AsString() 
+                          << " " << digitRange.first
+                          << " " << digitRange.second);
+            
+            // Now copy to the output.  The new digit is between start and scan.
+            CP::TPulseDigit::Vector adc;
+            CP::TMCDigit::ContributorContainer contrib;
+            for (int bin = digitRange.first; bin < digitRange.second; ++bin) {
+                double val = shapedCharge[bin];
+                // Shift the baseline to the pedestal value.
+                val += pedestal;
+                int ival = val;
+                ival = std::max(fDigitMinimum,std::min(ival,fDigitMaximum));
+                adc.push_back(ival);
+            }
+            CP::TPulseMCDigit* digit 
+                = new TPulseMCDigit(channel,digitRange.first-startBin,
+                                    adc,contrib);
+            digits->push_back(digit);
+            lastStop = digitRange.second;
+        } while (lastStop < stopBin);
     }
 
 }
@@ -585,18 +649,8 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
     double masterStart[3];
     double masterStop[3];
 
-        
-    // The weight to add for each electon.  This is setup so that the
-    // effect of the weighting is "canceled" by the effect of the
-    // digitization.  That means that the weight is related to 1/gain,
-    // where the gain is the number of electrons per ADC digit.
-#ifdef APPLY_WEIGHT
-    double weight = std::max(fAmplifierCollectionGain, 
-                             fAmplifierInductionGain);
-    weight = 0.5*std::min(8.0,std::max(1.0,1/weight));
-#else
+    // The weight to add for each simulated electron.
     double weight = 1.0;
-#endif
 
     double startedElectrons = 0.0;
     double totalCharge = 0.0;
@@ -633,7 +687,7 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
         double electrons 
             = (1-fRecombination)*seg->GetEnergyDeposit()/fActivationEnergy;
 
-        int nElectrons = 0.5 + gRandom->Gaus(electrons,sqrt(electrons))/weight;
+        int nElectrons = 0.5 + gRandom->Poisson(electrons)/weight;
 
         startedElectrons += nElectrons;
 
@@ -804,12 +858,15 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
     fInvertFFT->Transform();
     for (std::size_t i=0; i<out.size(); ++i) {
         out[i] = norm*fInvertFFT->GetPointReal(i);
+        // Add the electronics noise.  This is from the electronics, and
+        // therefore comes after the shaping.
+        out[i] += gRandom->Gaus(0.0,fDigitNoise/fDigitSlope);
     }
 
 }
 
 void CP::TElecSimple::DigitizeWires(CP::TEvent& ev, 
-                                    CP::TMCChannelId chan,
+                                    CP::TMCChannelId channel,
                                     const DoubleVector& in,
                                     const DoubleVector& triggers) {
     // Get the digits container, and create it if it doesn't exist.
@@ -853,6 +910,13 @@ void CP::TElecSimple::DigitizeWires(CP::TEvent& ev,
             std::pair<int,int> digitRange 
                 = FindDigitRange(lastStop,startBin,stopBin,in);
 
+            if (digitRange.first == digitRange.second) break;
+
+
+            CaptNamedInfo("Digitize", channel.AsString() 
+                          << " " << digitRange.first
+                          << " " << digitRange.second);
+            
             // Now copy to the output.  The new digit is between start and scan.
             CP::TPulseDigit::Vector adc;
             CP::TMCDigit::ContributorContainer contrib;
@@ -860,15 +924,13 @@ void CP::TElecSimple::DigitizeWires(CP::TEvent& ev,
                 double val = in[bin]*fDigitSlope;
                 // Shift the baseline to the pedestal value.
                 val += pedestal;
-                // Add the electronics noise.  This is from the electronics, and
-                // therefore comes after the shaping.
-                val += gRandom->Gaus(0.0,fDigitNoise);
                 int ival = val;
                 ival = std::max(fDigitMinimum,std::min(ival,fDigitMaximum));
                 adc.push_back(ival);
             }
             CP::TPulseMCDigit* digit 
-                = new TPulseMCDigit(chan,digitRange.first-startBin,adc,contrib);
+                = new TPulseMCDigit(channel,digitRange.first-startBin,
+                                    adc,contrib);
             digits->push_back(digit);
             
             // Setup for the next (possible) digit.
@@ -884,7 +946,58 @@ CP::TElecSimple::FindDigitRange(int start,
                                 int startBin, 
                                 int stopBin,
                                 const DoubleVector& input) {
-    if (fDigitThreshold < 1) return std::pair<int,int>(startBin,stopBin);
+    if (fDigitThreshold < 0.0) return std::pair<int,int>(startBin,stopBin);
+    
+    // There is a threshold, so do the zero suppression.
+    std::pair<int,int> digitRange = std::make_pair(start,stopBin);
 
-    return std::pair<int,int>(startBin,stopBin);
+    // Convert the threshold from ADC counts to mV (the input is the mV coming
+    // out of the amplifiers.
+    double threshold = fDigitThreshold/fDigitSlope;
+    // The number of bins to save before the threshold is crossed.
+    int preThresholdBins = fDigitPreThreshold/fDigitStep;
+    // The number of bins to save after the threshold is crossed.
+    int postThresholdBins = fDigitPostThreshold/fDigitStep;
+
+   // Find the first bin in the zero suppressed digit.  The tBin
+    // variable is the bin where the threshold was crossed.
+    int tBin;
+    for (tBin=digitRange.first; tBin<digitRange.second; ++tBin) {
+        if (input[tBin] > threshold) {
+            digitRange.first = std::max(digitRange.first,
+                                        tBin - preThresholdBins);
+            break;
+        }
+    }
+    // Check to make sure there is a non-zero digit.  If tBin is
+    // at the end of the range, then there isn't a new digit.
+    if (tBin == stopBin) {
+        digitRange.first = stopBin;
+        digitRange.second = stopBin;
+        return digitRange;
+    }
+    // Find the last bin in the zero suppressed digit.
+    bool zeroRangeFound = false;
+    do {
+        // Move to the first bin that is below threshold.
+        while (std::abs(input[tBin]) > threshold 
+               && tBin < digitRange.second) ++tBin;
+        // Check if there is a long section of zeros.  This allows
+        // room for the next preThresholdBins region.
+        zeroRangeFound = true;
+        for (int i = tBin;
+             i<tBin+postThresholdBins+preThresholdBins
+                 && i<digitRange.second;
+             ++i) {
+            if (std::abs(input[i]) > threshold) {
+                tBin = i;
+                zeroRangeFound = false;
+                break;
+            }
+        }
+    } while (!zeroRangeFound);
+    digitRange.second = std::min(digitRange.second,
+                                 tBin + postThresholdBins);
+
+    return digitRange;
 }
