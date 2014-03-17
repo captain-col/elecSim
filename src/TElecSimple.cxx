@@ -134,7 +134,8 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.digitization.threshold");
 
-    // The noise introduced during digitization
+    // The noise introduced during digitization.  This is in terms of electron
+    // equivalent noise.
     fDigitNoise
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.digitization.noise");
@@ -199,17 +200,9 @@ CP::TElecSimple::TElecSimple() {
             "elecSim.simple.light.sensors");
 
     // The wire noise level.
-    double noise 
+    fWireNoise 
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.wire.noise");
-
-    if (noise > 0) {
-        fWireNoise = std::sqrt(noise*fDigitStep);
-    }
-    else {
-        fWireNoise = 0.0;
-    }
-    CaptLog("Noise " << noise << " " << fWireNoise);
 
     fFFT = NULL;
     fInvertFFT = NULL;
@@ -764,6 +757,8 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
 void CP::TElecSimple::AddWireNoise(CP::TMCChannelId channel, 
                                    DoubleVector& out) {
     if (fWireNoise <= 0.1) return;
+    // Add the wire nose.  This is before the electronics and covers "thermal"
+    // noise from the wires.
     for (DoubleVector::iterator o = out.begin(); o != out.end(); ++o) {
         (*o) += gRandom->Gaus(0,fWireNoise);
     }
@@ -860,7 +855,7 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         out[i] = norm*fInvertFFT->GetPointReal(i);
         // Add the electronics noise.  This is from the electronics, and
         // therefore comes after the shaping.
-        out[i] += gRandom->Gaus(0.0,fDigitNoise/fDigitSlope);
+        out[i] += gRandom->Gaus(0.0,gain*fDigitNoise);
     }
 
 }

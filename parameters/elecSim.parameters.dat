@@ -72,14 +72,15 @@ al, "Ratio of Diffusion coefficient to electron mobility", PR A20, 1979
 
 The electron lifetime.
 
-< elecSim.simple.drift.life = 2 ms >
+< elecSim.simple.drift.life = 5 ms >
 
-The electronics noise quoted in effective electrons per second.  According
-to talk at the Sante Fe collaboration meeting on 1 Feb 2013, the total
-effective noise rate is 600 electrons per 1 us, (600 MHz).  This parameter
-controls the part of that noise that comes before the amplifier shaping.
+The electronics noise quoted in electron equivalent noise.  According to
+talk at the Sante Fe collaboration meeting on 1 Feb 2013, the total
+effective noise RMS is 600 electrons with 1 us shaping, (600 MHz).  This
+parameter controls the part of that noise that comes before the amplifier
+shaping.
 
-< elecSim.simple.wire.noise = 0 MHz >
+< elecSim.simple.wire.noise = 0 >
 
 The amplifier shape peaking time.
 
@@ -111,11 +112,9 @@ set yet.
 < elecSim.simple.digitization.step = 500 ns >
 
 The digitization noise that is not affected by the amplifier shaping.  This
-noise is given in ADC counts.  This is measured by the uBoone group to be
-less than 1.0, but set higher here to make the reconstruction job more
-difficult.  The total noise is about 600 electrons per 1 us. 
+noise is given in electron equivalent noise.
 
-< elecSim.simple.digitization.noise = 1.0 >
+< elecSim.simple.digitization.noise = 200.0 >
 
 The digitization pedestal.
 
