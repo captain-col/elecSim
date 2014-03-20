@@ -74,11 +74,10 @@ The electron lifetime.
 
 < elecSim.simple.drift.life = 5 ms >
 
-The electronics noise quoted in electron equivalent noise.  According to
-talk at the Sante Fe collaboration meeting on 1 Feb 2013, the total
-effective noise RMS is 600 electrons with 1 us shaping, (600 MHz).  This
+The electronics noise quoted in electron equivalent noise.  This
 parameter controls the part of that noise that comes before the amplifier
-shaping.
+shaping.  This is the thermal noise from the wires.  It's small enough that
+it's not simulated.
 
 < elecSim.simple.wire.noise = 0 >
 
@@ -112,9 +111,11 @@ set yet.
 < elecSim.simple.digitization.step = 500 ns >
 
 The digitization noise that is not affected by the amplifier shaping.  This
-noise is given in electron equivalent noise.
+noise is given in electron equivalent noise.  The initial value is 650 e-
+taken from IEEE Trans. on Nuc Sci Vol. 58 no. 5, 2011 "Front-End ASIC for a
+Liquid Argon TPC".  This should be tuned to the measured noise.
 
-< elecSim.simple.digitization.noise = 200.0 >
+< elecSim.simple.digitization.noise = 650.0 >
 
 The digitization pedestal.
 
