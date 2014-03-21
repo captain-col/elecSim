@@ -110,10 +110,11 @@ set yet.
 
 < elecSim.simple.digitization.step = 500 ns >
 
-The digitization noise that is not affected by the amplifier shaping.  This
-noise is given in electron equivalent noise.  The initial value is 650 e-
-taken from IEEE Trans. on Nuc Sci Vol. 58 no. 5, 2011 "Front-End ASIC for a
-Liquid Argon TPC".  This should be tuned to the measured noise.
+The digitization noise that is not affected by the pulse shaping.  This
+noise is given in electron equivalent noise.  It is inserted into the
+signal between the pulse shaping and the amplification.  The initial value
+is 650 e- taken from IEEE Trans. on Nuc Sci Vol. 58 no. 5, 2011 "Front-End
+ASIC for a Liquid Argon TPC".  This should be tuned to the measured noise.
 
 < elecSim.simple.digitization.noise = 650.0 >
 
