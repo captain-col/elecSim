@@ -204,6 +204,14 @@ private:
     /// Add the wire noise to a vector of charge arrival times.
     void AddWireNoise(CP::TMCChannelId channel, DoubleVector& out);
     
+    /// The pulse shape from a delta function impulse.  This is not
+    /// normalized.  It also gives the integral over the digit step.
+    double PulseShaping(double t);
+    
+    /// The charge induced on the induction wires as a delta function of
+    /// charge passes.  This is not normalized.
+    double InducedCharge(double t);
+    
     /// Fill a vector with the amplified values for the charge.  
     void ShapeCharge(CP::TMCChannelId channel,
                      const DoubleVector& in, DoubleVector& out);
@@ -214,8 +222,16 @@ private:
     /// An FFT used to invert for the convolution
     TVirtualFFT* fInvertFFT;
 
-    /// A buffers to hold the FFT of delta function response.
+    /// A buffer to hold the FFT of the delta function response.
     ComplexVector fResponseFFT;
+
+    /// A buffer to hold the FFT of the induced charge response.  This is only
+    /// used for induction wires.
+    ComplexVector fInducedFFT;
+
+    /// A buffer to hold the FFT of the capacitive coupling response.  This is
+    /// only used for induction wires.
+    ComplexVector fCurrentFFT;
 
     /// Translate the shaped wire charge into digitized values.  This adds the
     /// digits to the event.

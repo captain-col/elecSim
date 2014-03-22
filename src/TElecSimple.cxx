@@ -764,6 +764,32 @@ void CP::TElecSimple::AddWireNoise(CP::TMCChannelId channel,
     }
 }
 
+double CP::TElecSimple::InducedCharge(double tSample) {
+    double val = 0.0;
+    double norm = 0.0;
+    double pulseWidth = 1*unit::microsecond;
+    double xMax = 3.0*unit::mm/fDriftVelocity/pulseWidth;
+    double pulseNorm = 1.0-std::exp(-xMax*xMax/2.0);
+    for (double t = tSample; t<tSample+fDigitStep; t += 0.01*fDigitStep) {
+        double x = std::abs(t)/pulseWidth;
+        if (x<xMax) {
+            val += (std::exp(-x*x/2.0)-std::exp(-xMax*xMax/2.0))/pulseNorm;
+        }
+        norm += 1.0;
+    }
+    val /= norm;
+    return val;
+}
+
+double CP::TElecSimple::PulseShaping(double tSample) {
+    double val = 0.0;
+    for (double t = tSample; t<tSample+fDigitStep; t += 0.01*fDigitStep) {
+        double x = t/fAmplifierRise;
+        val += (x<40) ? x*std::exp(-x)/fAmplifierRise: 0.0;
+    }
+    return val;
+}
+
 void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
                                   const DoubleVector& in,
                                   DoubleVector& out) {
@@ -772,10 +798,10 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         out.resize(in.size());
     }
 
-    bool bipolar = false;
+    bool induction = false;
     double gain = fAmplifierCollectionGain;
     if (channel.GetType() == 0 && channel.GetSequence() != 0) {
-        bipolar = true;
+        induction = true;
         gain = fAmplifierInductionGain;
     }
     
@@ -798,7 +824,7 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
             CaptError("     original length: " << in.size());
             CaptError("     allocated length: " << len);
         }
-        len = in.size();
+        len = in.size();  // reinitialize in case the length changed.
         if (fInvertFFT) delete fInvertFFT;
         CaptLog("Initialize the Inverted FFT for convolutions");
         fInvertFFT = TVirtualFFT::FFT(1,&len,"C2R K");
@@ -807,38 +833,71 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
             CaptError("     original length: " << in.size());
             CaptError("     allocated length: " << len);
         }
+        CaptLog("FFT initialized with " << len << " elements");
         CaptLog("Create the response FFT");
         fResponseFFT.resize(in.size());
         // Find the normalization for the response
         double responseNorm = 0.0;
         for (int i = 0; i<len; ++i) {
-            double val = i*fDigitStep/fAmplifierRise;
-            val = (val<40) ? fDigitStep*val*std::exp(-val)/fAmplifierRise: 0.0;
-            responseNorm += val;
+            responseNorm += PulseShaping(i*fDigitStep);
         }
-        // Fill the response FFT.
+        // Take the FFT of the response.
         for (int i = 0; i<len; ++i) {
-            double val = i*fDigitStep/fAmplifierRise;
-            val = (val<40) ? fDigitStep*val*std::exp(-val)/fAmplifierRise: 0.0;
+            double val = PulseShaping(i*fDigitStep);
             fFFT->SetPoint(i,val/responseNorm);
         }
         fFFT->Transform();
+        // Save the response FFT for later.
         for (int i = 0; i<len; ++i) {
             double rl, im;
             fFFT->GetPointComplex(i,rl,im);
             fResponseFFT[i] = std::complex<double>(rl,im);
         }
-        CaptLog("FFT initialized with " << len << " elements");
+        CaptLog("Create the induced charge FFT");
+        fInducedFFT.resize(in.size());
+        // Find the normalization for the induced charge.
+        double inducedNorm = 0.0;
+        for (int i = 0; i<len; ++i) {
+            int bin = i;
+            if (bin>len/2) bin = bin-len;
+            inducedNorm += InducedCharge(bin*fDigitStep);
+        }
+        // Take the FFT of the induced charge.
+        for (int i = 0; i<len; ++i) {
+            int bin = i;
+            if (bin>len/2) bin = bin-len;
+            double val = InducedCharge(bin*fDigitStep);
+            fFFT->SetPoint(i,val);
+        }
+        fFFT->Transform();
+        // Save the induced charge FFT for later.
+        for (int i = 0; i<len; ++i) {
+            double rl, im;
+            fFFT->GetPointComplex(i,rl,im);
+            fInducedFFT[i] = std::complex<double>(rl,im);
+        }
+        CaptLog("Create the capacitive current FFT");
+        fCurrentFFT.resize(in.size());
+        // Take the FFT of the induced charge.
+        for (int i = 0; i<len; ++i) {
+            fFFT->SetPoint(i,0.0);
+        }
+        fFFT->SetPoint(0,-1.0);
+        fFFT->SetPoint(len-1,1.0);
+        fFFT->Transform();
+        // Save the induced charge FFT for later.
+        for (int i = 0; i<len; ++i) {
+            double rl, im;
+            fFFT->GetPointComplex(i,rl,im);
+            fCurrentFFT[i] = std::complex<double>(rl,im);
+        }
     }
 
     // Take the FFT of the input.
-    double last = 0.0;
     for (std::size_t i = 0; i<in.size(); ++i) {
         double val = in[i];
-        if (bipolar) val -= last;
         val *= gain;
         fFFT->SetPoint(i,val);
-        last = in[i];
     }
     fFFT->Transform();
 
@@ -848,6 +907,10 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         fFFT->GetPointComplex(i,rl,im);
         std::complex<double> v(rl,im);
         v *= norm*fResponseFFT[i];
+        if (induction) {
+            v *= fInducedFFT[i];
+            v *= fCurrentFFT[i];
+        }
         fInvertFFT->SetPoint(i,v.real(),v.imag());
     }
     fInvertFFT->Transform();
