@@ -855,7 +855,7 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         CaptLog("Initialize the FFT for convolutions");
         int len = in.size();
         if (fFFT) delete fFFT;
-        fFFT = TVirtualFFT::FFT(1,&len,"R2C K");
+        fFFT = TVirtualFFT::FFT(1,&len,"R2C K M");
         if (len != (int) in.size()) {
             CaptError("Invalid length for FFT");
             CaptError("     original length: " << in.size());
@@ -864,7 +864,7 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         len = in.size();  // reinitialize in case the length changed.
         if (fInvertFFT) delete fInvertFFT;
         CaptLog("Initialize the Inverted FFT for convolutions");
-        fInvertFFT = TVirtualFFT::FFT(1,&len,"C2R K");
+        fInvertFFT = TVirtualFFT::FFT(1,&len,"C2R K M");
         if (len != (int) in.size()) {
             CaptError("Invalid length for inverse FFT");
             CaptError("     original length: " << in.size());
