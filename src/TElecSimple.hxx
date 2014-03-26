@@ -62,6 +62,12 @@ private:
     /// in the wires (and is not associated with the amplifier).
     double fWireNoise;
 
+    /// The charge induction factor for the induction wires.  This is assumed
+    /// to be the same for the U and V planes since they have similar
+    /// electrical properties.  A factor of 1.0 means that an average charge
+    /// |e-| induced |e-| on the wire.
+    double fWireInductionFactor;
+
     /// The detection efficiency for a photon.  This should be a function of
     /// position in the detector, but this is the *simple* electronics
     /// simulation!  This is expressed in terms of photons collected per MeV.
@@ -111,6 +117,14 @@ private:
 
     /// The rise time for the TPC amplifier
     double fAmplifierRise;
+
+    /// A flag for whether the amplification describes the pulse height, or
+    /// area of a single sample pulse is described by the amplification.  If
+    /// this is true, then the amplification is the ratio of areas for the
+    /// input and the shaped, amplified pulse.  If this is false, then the
+    /// amplification is the ratio pulse heights for the input and the shaped,
+    /// amplified pulse.
+    double fAmplifierConserveIntegral;
 
     /// The gain of the amplifier for the collection plane.  This must be
     /// matched to the range of the ADC.

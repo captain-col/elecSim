@@ -70,9 +70,18 @@ al, "Ratio of Diffusion coefficient to electron mobility", PR A20, 1979
 
 < elecSim.simple.drift.diffusion = 15 cm2/s >
 
-The electron lifetime.
+The electron lifetime.  This is set to the target value for the CAPTAIN
+purification system.  The expectations are 1.3 ms for CAPTAIN, and 0.5 ms
+for mini-CAPTAIN.
 
-< elecSim.simple.drift.life = 5 ms >
+< elecSim.simple.drift.life = 1.3 ms >
+
+The charge induction factor for the induction wires.  This is assumed to be
+the same for the U and V planes since they have similar electrical
+properties.  A factor of 1.0 means that an average charge |e-| induced |e-|
+on the wires.
+
+< elecSim.simple.wire.induction = 1.0 >
 
 The electronics noise quoted in electron equivalent noise.  This
 parameter controls the part of that noise that comes before the amplifier
@@ -85,15 +94,21 @@ The amplifier shape peaking time.
 
 < elecSim.simple.amplifier.riseTime = 1000 ns >
 
+Flag for if the shaper is conserving the pulse height or the pulse area.
+If this is true, the integral is conserved, otherwise the height is
+conserved.
+     
+< elecSim.simple.amplifier.integral = false >
+
 The amplifier gain for the collection wires.  The ADC has design gain of
 4.7, 7.8, 14, or 25 mV/fC.  The units are mV/fC.
 
-< elecSim.simple.amplifier.gain.collection = 14.0 >
+< elecSim.simple.amplifier.gain.collection = 4.7 >
 
 The amplifier gain for the induction wires.  The ADC has design gain of
 4.7, 7.8, 14, or 25 mV/fC.  The units are mV/fC.
 
-< elecSim.simple.amplifier.gain.induction = 14.0 >
+< elecSim.simple.amplifier.gain.induction = 4.7 >
 
 The amplifier gain for the PMTs.  A different front end is used that
 for the TPC, so the gains are different.  The units are adc/pe.

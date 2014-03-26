@@ -61,6 +61,11 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.amplifier.riseTime");
 
+    // The rise time for the amplifier
+    fAmplifierConserveIntegral
+        = CP::TRuntimeParameters::Get().GetParameterB(
+            "elecSim.simple.amplifier.integral");
+
     // The gain of the amplifier for the collection plane.  This must be
     // matched to the range of the ADC.
     fAmplifierCollectionGain
@@ -204,6 +209,11 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.wire.noise");
 
+    // The normalization factor for the charge induced on a wire.
+    fWireInductionFactor 
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.wire.induction");
+    
     fFFT = NULL;
     fInvertFFT = NULL;
 }
@@ -642,6 +652,30 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
     double masterStart[3];
     double masterStop[3];
 
+    // The fraction of the charge that is "collected".  This is normally 1 for
+    // the collection wires and less for the induction wires. 
+    double collectionEfficiency = 1.0;
+
+    // The zone around a wire where change is collected.
+    double collectionZone = 1.5*unit::mm;
+
+    // Assume linear sharing between wires.  This treats each wire separately,
+    // so the sharing is given by a slope. The charge being added to a wire is
+    // q*(1.0+b*collectionSlope) where "b" is the impact parameter.  The model
+    // is that collection wires (ie the X wires) collect everything inside the
+    // collection zone (the split is halfway between the wires).  The
+    // induction wires share charge linearly between the wires.
+    double collectionSlope = 0.0;
+
+    if (plane != 0) {
+        collectionEfficiency = fWireInductionFactor;
+        collectionZone = 3.0*unit::mm;
+        collectionSlope = -1.0/collectionZone;
+    }
+    
+    // The maximum diffusion.
+    double maxDiffusion = collectionZone + 3*unit::mm;
+
     // The weight to add for each simulated electron.
     double weight = 1.0;
 
@@ -671,8 +705,7 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
         // towards zero.  The length of the wire is along Y.
         gGeoManager->MasterToLocal(master,local);
 
-        // Define 15 mm as a long ways from the wire...
-        if (std::abs(local[0]) > 3*unit::mm) {
+        if (std::abs(local[0]) > maxDiffusion) {
             continue;
         }
 
@@ -726,9 +759,9 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
                 wireDistance = gRandom->Gaus(wireDistance,driftSigma);
             }
 
-            // BAD, BAD, BAD... I'm assuming the wire spacing is 3 mm.
-            if (std::abs(wireDistance) > 1.5*unit::mm) continue;
-
+            // Charges outside of this zone are not collected at all.
+            if (std::abs(wireDistance) > collectionZone) continue;
+            
             // Add the electron to the collected charge.
             double deltaT = driftTime - fStartSimulation;
             std::size_t timeBin = deltaT/fDigitStep;
@@ -739,11 +772,15 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
                 continue;
             }
             
-            // BAD! BAD! BAD! I'm assuming that the signal doesn't vary
-            // depending on how far the electron is from the wire.  This
+            // Calculate the collected charge.
+            double charge = weight;
+            charge *= 1.0 + std::abs(wireDistance)*collectionSlope;
+            charge *= collectionEfficiency;
+            if (charge < 0.0) continue;
+
             // matters for the induction wires.
-            out[timeBin] += weight;
-            totalCharge += weight;
+            out[timeBin] += charge;
+            totalCharge += charge;
         }
     }
 
@@ -839,7 +876,13 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         // Find the normalization for the response
         double responseNorm = 0.0;
         for (int i = 0; i<len; ++i) {
-            responseNorm += PulseShaping(i*fDigitStep);
+            if (fAmplifierConserveIntegral) {
+                responseNorm += PulseShaping(i*fDigitStep);
+            }
+            else {
+                responseNorm = std::max(
+                    responseNorm,PulseShaping(i*fDigitStep));
+            }
         }
         // Take the FFT of the response.
         for (int i = 0; i<len; ++i) {
