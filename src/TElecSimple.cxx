@@ -596,7 +596,7 @@ void CP::TElecSimple::DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
     DoubleVector shapedCharge(pmtBins);
     
     // Add the signal for each photon.
-    double signalWidth = 10.0*unit::ns;
+    double signalWidth = 30.0*unit::ns;
     for (DoubleVector::const_iterator t = input.begin();
          t != input.end(); ++t) {
         double pulse = gRandom->Gaus(1.0,fPMTPeak);
@@ -613,7 +613,7 @@ void CP::TElecSimple::DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
     // therefore comes after the shaping.
     for (DoubleVector::iterator s = shapedCharge.begin();
          s != shapedCharge.end(); ++s) {
-        *s += gRandom->Gaus(0.0,1.0);
+        *s += gRandom->Gaus(0.0,5.0);
     }
 
     double pedestal = fDigitPedestal + gRandom->Uniform(-0.5,0.5);
@@ -634,7 +634,7 @@ void CP::TElecSimple::DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
         int lastStop = startBin;
         // The threshold to save a region of the FADC.  If this is negative,
         // then there isn't any zero suppression.
-        double threshold = 5.0;
+        double threshold = -5.0;
         // The number of bins to save before the threshold is crossed.
         int preThresholdBins = 1.0*unit::microsecond/fPMTStep;
         // The number of bins to save after the threshold is crossed.
