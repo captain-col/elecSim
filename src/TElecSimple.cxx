@@ -596,16 +596,27 @@ void CP::TElecSimple::DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
     DoubleVector shapedCharge(pmtBins);
     
     // Add the signal for each photon.
-    double signalWidth = 30.0*unit::ns;
+    double signalWidth = 10.0*unit::ns;
+    double sigNorm = 0.0;
+    for (double v = 0.0; v<10.0*signalWidth; v+=fPMTStep) {
+        double sig = v*std::exp(-1.0-v/signalWidth)/signalWidth;
+        sigNorm += sig;
+    }
+
     for (DoubleVector::const_iterator t = input.begin();
          t != input.end(); ++t) {
         double pulse = gRandom->Gaus(1.0,fPMTPeak);
         while (pulse < 0.1) pulse = gRandom->Gaus(1.0,fPMTPeak);
+        double sigMax = 0.0;
         for (double val = 0.0; val < 10.0*signalWidth; val += fPMTStep) {
             int bin = (*t + val)/fPMTStep;
             double v = *t + 2*val - bin*fPMTStep;
             double sig = v*std::exp(-1.0-v/signalWidth)/signalWidth;
-            shapedCharge[bin] += sig * pulse * fAmplifierPMTGain;;
+            sig *= pulse;
+            sig *= fAmplifierPMTGain;
+            sig /= sigNorm;
+            sigMax = std::max(sigMax,sig);
+            shapedCharge[bin] += sig;
         }
     }
 
@@ -613,7 +624,7 @@ void CP::TElecSimple::DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
     // therefore comes after the shaping.
     for (DoubleVector::iterator s = shapedCharge.begin();
          s != shapedCharge.end(); ++s) {
-        *s += gRandom->Gaus(0.0,5.0);
+        *s += gRandom->Gaus(0.0,1.0);
     }
 
     double pedestal = fDigitPedestal + gRandom->Uniform(-0.5,0.5);
