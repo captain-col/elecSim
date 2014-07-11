@@ -83,9 +83,6 @@ private:
     /// The time constant for the long component of the scintillation.
     double fLongTime;
 
-    /// The number of light sensors in the detector.
-    int fLightSensorCount;
-
     // Parameters controlling the trigger simulation.
 
     /// The time window used to generate the trigger.  The current simulation
@@ -203,11 +200,11 @@ private:
     /// in the elecSim.parameters.dat file.
     void GenerateTriggers(CP::TEvent& ev, DoubleVector& triggers);
 
-    /// Fill a vector full of the photon arrival times for the PMTS.
+    /// Fill a vector full of the photon arrival times for the PMTS.  The
+    /// times are sorted from first to last.
     void LightSignal(CP::TEvent& ev, CP::TMCChannelId chan, DoubleVector& out);
 
-    /// Build the digit for the PMT..  This adds the
-    /// digits to the event.
+    /// Build the digit for a PMT.  This adds the digits to the event.
     void DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
                        const DoubleVector& input,
                        const DoubleVector& triggers);

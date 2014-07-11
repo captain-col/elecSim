@@ -26,15 +26,12 @@ The trigger threshold in MeV.
 < elecSim.simple.trigger.threshold = 5 MeV >
 
 The number of photons collected per MeV.  This comes from a presentation by
-Ion Stancu on 13 Feb 2014.  He found 0.39 pe/MeV per PMT assuming energy
-deposition at the center of the detector and ?5 cm? pmts.  I've corrected
-it for quantum efficiency (assuming 22%).
+Ion Stancu on 13 Feb 2014 and is based on a number he got from C. Grant
+(22000/MeV).  Ion found 0.39 pe/MeV per PMT assuming energy deposition at
+the center of the detector and ?5 cm? pmts.  I've corrected it for quantum
+efficiency (assuming 22%).
 
-< elecSim.simple.light.collection = 0.086 >
-
-The number of PMTs in the detector.
-
-< elecSim.simple.light.sensors = 16 >
+< elecSim.simple.light.collection = 4840 >
 
 The dark noise for the PMTs.
 

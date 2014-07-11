@@ -5,6 +5,7 @@
 #include <TCaptLog.hxx>
 #include <TRuntimeParameters.hxx>
 #include <HEPUnits.hxx>
+#include <HEPConstants.hxx>
 #include <TGeomIdManager.hxx>
 #include <TManager.hxx>
 #include <TPulseMCDigit.hxx>
@@ -12,6 +13,9 @@
 #include <CaptGeomId.hxx>
 
 #include <TGeoManager.h>
+#include <TGeoTube.h>
+#include <TGeoBBox.h>
+
 #include <TRandom.h>
 #include <TVirtualFFT.h>
 
@@ -200,10 +204,6 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.light.longTime");
 
-    fLightSensorCount 
-        = CP::TRuntimeParameters::Get().GetParameterI(
-            "elecSim.simple.light.sensors");
-
     // The wire noise level.
     fWireNoise 
         = CP::TRuntimeParameters::Get().GetParameterD(
@@ -228,7 +228,7 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
         = event.Get<CP::TDataVector>("truth/g4Hits");
 
     if (!truthHits) {
-        CaptLog("No truth hits in event");
+        CaptError("No truth hits in event");
         return;
     }
 
@@ -241,7 +241,7 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
         ++segCount;
     }
     if (segCount < 1) {
-        CaptLog("Event is missing the TG4HitContainer objects");
+        CaptError("Event is missing the TG4HitContainer objects");
         return;
     }
 
@@ -272,8 +272,11 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
                                     *triggerTime + fPostTriggerTime);
     }
     
-    // Simulate the (ganged) PMT signal.
-    for (int i = 0; i<fLightSensorCount; ++i) {
+    // Simulate the PMT signals.
+    for (int i = 0; i<100; ++i) {
+        // Check to see if this PMT exists, quit if it doesn't.
+        if (!CP::TManager::Get().GeomId().CdId(
+                CP::GeomId::Captain::Photosensor(i))) break;
         TMCChannelId pmt(1,0,i);
         DoubleVector photonTimes;
         LightSignal(event,pmt,photonTimes);
@@ -450,6 +453,22 @@ void CP::TElecSimple::LightSignal(CP::TEvent& event,
     CP::THandle<CP::TDataVector> truthHits 
         = event.Get<CP::TDataVector>("truth/g4Hits");
 
+    int pmt = chan.GetNumber();
+
+    CP::TManager::Get().Geometry(); // just in case...
+    if (!CP::TManager::Get().GeomId().CdId(
+            CP::GeomId::Captain::Photosensor(pmt))) {
+        CaptError("Not a pmt " << chan << " " << pmt);
+        return;
+    }
+    
+    // Arrays for the transforms.
+    double local[3];
+    double master[3];
+    double masterStart[3];
+    double masterStop[3];
+
+    int totalPhotons = 0.0;
     for (CP::TDataVector::iterator h = truthHits->begin();
          h != truthHits->end();
          ++h) {
@@ -460,10 +479,72 @@ void CP::TElecSimple::LightSignal(CP::TEvent& event,
              ++h) {
             const CP::TG4HitSegment* seg 
                 = dynamic_cast<const CP::TG4HitSegment*>((*h));
-            double startT = seg->GetStartT();
             
-            // Estimate the mean number of photons generated.
+            masterStart[0] = seg->GetStartX();
+            masterStart[1] = seg->GetStartY();
+            masterStart[2] = seg->GetStartZ();
+            double startT = seg->GetStartT();
+            masterStop[0] = seg->GetStopX();
+            masterStop[1] = seg->GetStopY();
+            masterStop[2] = seg->GetStopZ();
+            
+            for (int i=0; i<3; ++i) {
+                master[i] = 0.5*masterStart[i] + 0.5*masterStop[i];
+            }
+            
+            // The PMT is facing in the positive Z direction, and the origin
+            // is at the center of the photocathode.
+            gGeoManager->MasterToLocal(master,local);
+
+            // Make sure the energy is in front of the PMT (no reflections are
+            // done).
+            if (local[2] < 0) continue;
+
+            // Find the distance to the PMT;.
+            double distance = std::sqrt(local[0]*local[0]
+                                        +local[1]*local[1]
+                                        +local[2]*local[2]);
+            if (distance < 1*unit::mm) distance = 1*unit::mm;
+
+            // Find the cosine to the normal of the PMT.
+            double cangle = local[2]/distance;
+
+            // Find the PMT area (this needs to be calculated from the
+            // geometry).
+            double pmtArea = -1;
+            TGeoVolume *volume = gGeoManager->GetCurrentVolume();
+            if (!volume) abort();
+            do {
+                TGeoTube *tube = dynamic_cast<TGeoTube*>(volume->GetShape());
+                if (tube) {
+                    double r = tube->GetRmax();
+                    pmtArea = 2*unit::pi*r*r;
+                    break;
+                }
+                TGeoBBox *box = dynamic_cast<TGeoBBox*>(volume->GetShape());
+                if (box) {
+                    double x = 2*tube->GetDX();
+                    double y = 2*tube->GetDY();
+                    pmtArea = x*y;
+                    break;
+                }
+                abort();
+            } while(false);
+            
+            // Find the solid angle for the pmt.  This uses the "small angle"
+            // approximation and isn't right when the track is close to the
+            // PMT.  To stop *serious* problems, this limits the covered area
+            // to 2*pi (only half of total solid angle).
+            double solidAngle = cangle*pmtArea/(4*unit::pi*distance*distance);
+            if (solidAngle > 2*unit::pi) solidAngle = 2*unit::pi;
+
+            // Estimate the mean number of photons generated at the point of
+            // the energy deposition.
             double photons = fPhotonCollection*seg->GetEnergyDeposit();
+            totalPhotons += photons;
+
+            // Correct for solid angle
+            photons *= solidAngle/(4*unit::pi);
 
             // Find the number of photons at a PMT.
             int nPhotons = gRandom->Poisson(photons);
@@ -472,19 +553,23 @@ void CP::TElecSimple::LightSignal(CP::TEvent& event,
                 double r = gRandom->Uniform();
                 if (r < fShortFraction) {
                     double t = gRandom->Exp(fShortTime);
-                    t += startT;
+                    // This assumes that the UV index of refraction is 1.0
+                    t += startT + distance/unit::c_light;
                     t -= fStartSimulation;
                     times.push_back(t);
                 }
                 else {
                     double t = gRandom->Exp(fLongTime);
-                    t += startT;
+                    // This assumes that the UV index of refraction is 1.0
+                    t += startT + distance/unit::c_light;
                     t -= fStartSimulation;
                     times.push_back(t);
                 }
             }
         }
     }
+
+    std::sort(times.begin(), times.end());
 }
 
 void CP::TElecSimple::DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
