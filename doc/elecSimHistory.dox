@@ -1,2 +1,17 @@
 /*! \page elecSimHistory History for the elecSim Package 
+
+\section elecSim_v0r0p0_history Version 0.0.0
+
+Freeze information:
+   - Freeze Date: Mon Feb  2 12:43:57 2015
+   - Freeze User: mcgrew
+   - Freeze Host: boxer 
+
+
+FIRST FREEZE
+
+This is the first frozen implementation of the electronics simulation
+intended as a base for the mini-CAPTAIN cosmic ray production, and for the
+mini-captain neutron response simulations.
+
 */
