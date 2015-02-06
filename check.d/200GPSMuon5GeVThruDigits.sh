@@ -11,7 +11,7 @@ if [ ! -f $INPUT ]; then
     exit
 fi
 
-OUTPUT=elecsim-200GPSMuon5GeVThruHits.root
+OUTPUT=elecsim-200GPSMuon5GeVThruDigits.root
 if [ -f $OUTPUT ]; then
     rm $OUTPUT
 fi
