@@ -116,9 +116,7 @@ The width of the 1 pe peak (in terms of pe).
     
 < elecSim.simple.amplifier.width = 0.25 > 
 
-The digitization "frequency" (actually the time per bin).  This should be
-about 1/4 of the shape peaking time.  The electronics specs have not been
-set yet.
+The digitization "frequency" (actually the time per bin).
 
 < elecSim.simple.digitization.step = 500 ns >
 
