@@ -91,6 +91,16 @@ The amplifier shape peaking time.
 
 < elecSim.simple.amplifier.riseTime = 1000 ns >
 
+Control the shape of the leading edge of the pulse.  The nominal value
+seems to be between 1.0 and 2.0 (based on the observed electronics shape).
+
+< elecSim.simple.amplifier.riseShape = 2.0 >
+
+Control the shape of the leading edge of the pulse.  The nominal value
+seems to be about 2.0 (based on the observed electronics shape).
+
+< elecSim.simple.amplifier.fallShape = 2.0 >
+
 Flag for if the shaper is conserving the pulse height or the pulse area.
 If this is true, the integral is conserved, otherwise the height is
 conserved.
@@ -100,12 +110,12 @@ conserved.
 The amplifier gain for the collection wires.  The ADC has design gain of
 4.7, 7.8, 14, or 25 mV/fC.  The units are mV/fC.
 
-< elecSim.simple.amplifier.gain.collection = 4.7 >
+< elecSim.simple.amplifier.gain.collection = 14 >
 
 The amplifier gain for the induction wires.  The ADC has design gain of
 4.7, 7.8, 14, or 25 mV/fC.  The units are mV/fC.
 
-< elecSim.simple.amplifier.gain.induction = 4.7 >
+< elecSim.simple.amplifier.gain.induction = 14 >
 
 The amplifier gain for the PMTs.  A different front end is used that
 for the TPC, so the gains are different.  The units are adc/pe.

@@ -115,6 +115,12 @@ private:
     /// The rise time for the TPC amplifier
     double fAmplifierRise;
 
+    /// The shape factor for the leading edge of the TPC pulse.
+    double fAmplifierRiseShape;
+
+    /// The shape factor for the trailing edge of the TPC pulse.
+    double fAmplifierFallShape;
+    
     /// A flag for whether the amplification describes the pulse height, or
     /// area of a single sample pulse is described by the amplification.  If
     /// this is true, then the amplification is the ratio of areas for the
@@ -215,8 +221,9 @@ private:
     /// Add the wire noise to a vector of charge arrival times.
     void AddWireNoise(CP::TMCChannelId channel, DoubleVector& out);
     
-    /// The pulse shape from a delta function impulse.  This is not
-    /// normalized.  It also gives the integral over the digit step.
+    /// The pulse shape from a delta function impulse at t equal to zero.
+    /// This is not normalized.  It also gives the integral over the digit
+    /// step.
     double PulseShaping(double t);
     
     /// The charge induced on the induction wires as a delta function of

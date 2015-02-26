@@ -65,7 +65,18 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.amplifier.riseTime");
 
-    // The rise time for the amplifier
+    // The shaping factor for the leading edge of the pulse.
+    fAmplifierRiseShape
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.amplifier.riseShape");
+
+    // The shaping factor for the trailing edge of the pulse.
+    fAmplifierRiseShape
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.amplifier.fallShape");
+
+    // Set if the integral or the pulse height is conserved.  Based on lab
+    // measurements, the pulse shaper conserves the peak voltage.
     fAmplifierConserveIntegral
         = CP::TRuntimeParameters::Get().GetParameterB(
             "elecSim.simple.amplifier.integral");
@@ -917,8 +928,11 @@ double CP::TElecSimple::InducedCharge(double tSample) {
 double CP::TElecSimple::PulseShaping(double tSample) {
     double val = 0.0;
     for (double t = tSample; t<tSample+fDigitStep; t += 0.01*fDigitStep) {
+        if (t<0.0) continue;
         double x = t/fAmplifierRise;
-        val += (x<40) ? x*std::exp(-x)/fAmplifierRise: 0.0;
+        if (x < 1.0) x = std::pow(x,fAmplifierRiseShape);
+        else x = std::pow(x,fAmplifierFallShape);
+        val += (x<40) ? x*std::exp(-x): 0.0;
     }
     return val;
 }
