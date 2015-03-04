@@ -222,9 +222,11 @@ private:
     void AddWireNoise(CP::TMCChannelId channel, DoubleVector& out);
     
     /// The pulse shape from a delta function impulse at t equal to zero.
-    /// This is not normalized.  It also gives the integral over the digit
-    /// step.
-    double PulseShaping(double t);
+    /// This is not normalized.  It takes three parameters: "t" is the time
+    /// since the delta-function impulse, "w" is the window to average the
+    /// shape over, and "samples" is the number of samples used to do the
+    /// average.
+    double PulseShaping(double t, double w, int samples=100);
     
     /// The charge induced on the induction wires as a delta function of
     /// charge passes.  This is not normalized.

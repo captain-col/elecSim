@@ -136,7 +136,7 @@ signal between the pulse shaping and the amplification.  The initial value
 is 650 e- taken from IEEE Trans. on Nuc Sci Vol. 58 no. 5, 2011 "Front-End
 ASIC for a Liquid Argon TPC".  This should be tuned to the measured noise.
 
-< elecSim.simple.digitization.noise = 650.0 >
+< elecSim.simple.digitization.noise = 2000.0 >
 
 The digitization pedestal.
 

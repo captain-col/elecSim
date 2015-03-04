@@ -19,6 +19,7 @@
 #include <TRandom.h>
 #include <TVirtualFFT.h>
 
+#include <TH1F.h>
 #include <utility>
 #include <vector>
 #include <algorithm>
@@ -71,7 +72,7 @@ CP::TElecSimple::TElecSimple() {
             "elecSim.simple.amplifier.riseShape");
 
     // The shaping factor for the trailing edge of the pulse.
-    fAmplifierRiseShape
+    fAmplifierFallShape
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.amplifier.fallShape");
 
@@ -386,6 +387,24 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
     shapeTime->push_back(1.0);               // PMT
     header->AddDatum(shapeTime.release());
 
+    /// Fill the rising edge shape.
+    std::auto_ptr<CP::TRealDatum> shapeRise(new CP::TRealDatum("shapeRise"));
+    shapeRise->clear();
+    shapeRise->push_back(fAmplifierRiseShape);    // X Plane
+    shapeRise->push_back(fAmplifierRiseShape);    // V Plane
+    shapeRise->push_back(fAmplifierRiseShape);    // U Plane
+    shapeRise->push_back(1.0);                    // PMT
+    header->AddDatum(shapeRise.release());
+    
+    /// Fill the falling edge shape.
+    std::auto_ptr<CP::TRealDatum> shapeFall(new CP::TRealDatum("shapeFall"));
+    shapeFall->clear();
+    shapeFall->push_back(fAmplifierFallShape);    // X Plane
+    shapeFall->push_back(fAmplifierFallShape);    // V Plane
+    shapeFall->push_back(fAmplifierFallShape);    // U Plane
+    shapeFall->push_back(1.0);                    // PMT
+    header->AddDatum(shapeFall.release());
+    
     /// Fill the drift velocity and electron lifetime.
     std::auto_ptr<CP::TRealDatum> argonState(new CP::TRealDatum("argon"));
     argonState->clear();
@@ -925,9 +944,11 @@ double CP::TElecSimple::InducedCharge(double tSample) {
     return val;
 }
 
-double CP::TElecSimple::PulseShaping(double tSample) {
+double CP::TElecSimple::PulseShaping(double tSample, double window,
+                                     int samples) {
     double val = 0.0;
-    for (double t = tSample; t<tSample+fDigitStep; t += 0.01*fDigitStep) {
+    double step = 1.0/samples;
+    for (double t = tSample; t<tSample+window; t += step*window) {
         if (t<0.0) continue;
         double x = t/fAmplifierRise;
         if (x < 1.0) x = std::pow(x,fAmplifierRiseShape);
@@ -987,20 +1008,31 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         double responseNorm = 0.0;
         for (int i = 0; i<len; ++i) {
             if (fAmplifierConserveIntegral) {
-                responseNorm += PulseShaping(i*fDigitStep);
+                responseNorm += PulseShaping(i*fDigitStep, fDigitStep);
             }
             else {
                 responseNorm = std::max(
-                    responseNorm,PulseShaping(i*fDigitStep));
+                    responseNorm,PulseShaping(i*fDigitStep, fDigitStep));
             }
         }
-        // Take the FFT of the response.
+        // Take the FFT with the delta function response.
         for (int i = 0; i<len; ++i) {
-            double val = PulseShaping(i*fDigitStep);
+            double val = PulseShaping(i*fDigitStep, fDigitStep);
             fFFT->SetPoint(i,val/responseNorm);
         }
+#ifdef FILL_HISTOGRAM
+#undef FILL_HISTOGRAM
+        TH1F* elecResp = new TH1F("elecResp",
+                                  "Electronics Response",
+                                  100,
+                                  0.0, 100.0);
+        for (int i = 0; i<100; ++i) {
+            double val = PulseShaping(i*fDigitStep, fDigitStep);
+            elecResp->Fill(i+0.5, std::abs(val));
+        }
+#endif
+        // Take the transform and safe it for later.
         fFFT->Transform();
-        // Save the response FFT for later.
         for (int i = 0; i<len; ++i) {
             double rl, im;
             fFFT->GetPointComplex(i,rl,im);
