@@ -299,7 +299,7 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
     chargeBins = 2*(1+chargeBins/2);
     DoubleVector collectedCharge(chargeBins);
     DoubleVector shapedCharge(chargeBins);
-
+    
     // For each wire in the detector, figure out the signal.  The loop is done
     // this way so that we don't need to know how many planes and wires are
     // being simulated.
@@ -1103,7 +1103,7 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         out[i] = norm*fInvertFFT->GetPointReal(i);
         // Add the electronics noise.  This is from the electronics, and
         // therefore comes after the shaping.
-        out[i] += gRandom->Gaus(0.0,gain*fDigitNoise);
+        out[i] += gRandom->Gaus(0.0,fDigitNoise/fDigitSlope);
     }
 
 }
@@ -1139,12 +1139,13 @@ void CP::TElecSimple::DigitizeWires(CP::TEvent& ev,
         // This is the start time of the digitization window.
         double startTime = *trigger - fDigitPreTriggerTime;
         // This is the stop time of the digitization window.
-        double stopTime = *trigger + fDigitPostTriggerTime;
+        double stopTime = startTime
+            + fDigitPreTriggerTime + fDigitPostTriggerTime;
         // This is the first bin in the digitization window
         int startBin = startTime/fDigitStep;
         if (startBin < 0) startBin = 0;
         // This is the last bin in the digitization window
-        int stopBin = 1 + stopTime/fDigitStep;
+        int stopBin = startBin + (stopTime-startTime)/fDigitStep;
         if (stopBin > (int) in.size()) stopBin = in.size();
         // This is the first bin that might end up in a new digit.
         int lastStop = startBin;
@@ -1154,7 +1155,6 @@ void CP::TElecSimple::DigitizeWires(CP::TEvent& ev,
                 = FindDigitRange(lastStop,startBin,stopBin,in);
 
             if (digitRange.first == digitRange.second) break;
-
 
             CaptNamedInfo("Digitize", channel.AsString() 
                           << " " << digitRange.first

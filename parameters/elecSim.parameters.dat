@@ -5,8 +5,8 @@ also used to calculate the total time window that will be simulated.  The
 window from min(triggerTime)-preTriggerTime to
 max(triggerTime)+postTriggerTime will be simulated.
 
-< elecSim.simple.preTriggerTime = 50 us >
-< elecSim.simple.postTriggerTime = 700 us >
+< elecSim.simple.preTriggerTime = 1500 us >
+< elecSim.simple.postTriggerTime = 3298 us >
 
 The integration window for the trigger.  If this is negative then use a
 beam trigger (i.e. a trigger time of 0.0)
@@ -80,12 +80,13 @@ on the wires.
 
 < elecSim.simple.wire.induction = 1.0 >
 
-The electronics noise quoted in electron equivalent noise.  This
-parameter controls the part of that noise that comes before the amplifier
-shaping.  This is the thermal noise from the wires.  It's small enough that
-it's not simulated.
+The electronics noise quoted in electron equivalent noise.  This parameter
+controls the part of that noise that comes before the amplifier shaping.
+This is the thermal noise from the wires.  The initial value is 650 e-
+taken from IEEE Trans. on Nuc Sci Vol. 58 no. 5, 2011 "Front-End ASIC for a
+Liquid Argon TPC".
 
-< elecSim.simple.wire.noise = 0 >
+< elecSim.simple.wire.noise = 650 >
 
 The amplifier shape peaking time.
 
@@ -131,21 +132,21 @@ The digitization "frequency" (actually the time per bin).
 < elecSim.simple.digitization.step = 500 ns >
 
 The digitization noise that is not affected by the pulse shaping.  This
-noise is given in electron equivalent noise.  It is inserted into the
-signal between the pulse shaping and the amplification.  The initial value
-is 650 e- taken from IEEE Trans. on Nuc Sci Vol. 58 no. 5, 2011 "Front-End
-ASIC for a Liquid Argon TPC".  This should be tuned to the measured noise.
+noise is given ADC counts.  It is inserted into the signal between the
+pulse shaping and the amplification.  This should be tuned to the measured
+noise.
 
-< elecSim.simple.digitization.noise = 2000.0 >
+< elecSim.simple.digitization.noise = 7.5 >
 
 The digitization pedestal.
 
 < elecSim.simple.digitization.pedestal = 2048 >
 
 The digitizer has a design slope of 2.5 ADC per mV of input voltage from
-the amplifier.
+the amplifier.  In situ measurements suggest it's actually closer to 2.0
+ADC per mV.
 
-< elecSim.simple.digitization.slope = 2.5 >
+< elecSim.simple.digitization.slope = 2.0 >
 
 The ADC maximum value.
 < elecSim.simple.digitization.maximum = 4095 >
