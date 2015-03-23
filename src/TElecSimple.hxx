@@ -22,7 +22,7 @@ class TVirtualFFT;
 /// and calibration to different electronics behaviors.
 class CP::TElecSimple {
 public:
-    typedef std::vector<double> DoubleVector;
+    typedef std::vector<double> RealVector;
     typedef std::vector< std::complex<double> > ComplexVector;
     TElecSimple();
     ~TElecSimple();
@@ -204,22 +204,22 @@ private:
 
     /// Find the trigger times for an event.  This is controlled by paramters
     /// in the elecSim.parameters.dat file.
-    void GenerateTriggers(CP::TEvent& ev, DoubleVector& triggers);
+    void GenerateTriggers(CP::TEvent& ev, RealVector& triggers);
 
     /// Fill a vector full of the photon arrival times for the PMTS.  The
     /// times are sorted from first to last.
-    void LightSignal(CP::TEvent& ev, CP::TMCChannelId chan, DoubleVector& out);
+    void LightSignal(CP::TEvent& ev, CP::TMCChannelId chan, RealVector& out);
 
     /// Build the digit for a PMT.  This adds the digits to the event.
     void DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
-                       const DoubleVector& input,
-                       const DoubleVector& triggers);
+                       const RealVector& input,
+                       const RealVector& triggers);
 
     /// Fill a vector full of the charge arrival times for a particular wire.
-    bool DriftCharge(CP::TEvent& ev, CP::TMCChannelId chan, DoubleVector& out);
+    bool DriftCharge(CP::TEvent& ev, CP::TMCChannelId chan, RealVector& out);
 
     /// Add the wire noise to a vector of charge arrival times.
-    void AddWireNoise(CP::TMCChannelId channel, DoubleVector& out);
+    void AddWireNoise(CP::TMCChannelId channel, RealVector& out);
     
     /// The pulse shape from a delta function impulse at t equal to zero.
     /// This is not normalized.  It takes three parameters: "t" is the time
@@ -229,12 +229,13 @@ private:
     double PulseShaping(double t, double w, int samples=100);
     
     /// The charge induced on the induction wires as a delta function of
-    /// charge passes.  This is not normalized.
-    double InducedCharge(double t);
+    /// charge passes.  This is normalized to the electron charge.
+    double InducedCharge(bool isCollection, double impact,
+                         double tSample, double sStep);
     
-    /// Fill a vector with the amplified values for the charge.  
+    /// Fill a vector with the shaped values for the charge.
     void ShapeCharge(CP::TMCChannelId channel,
-                     const DoubleVector& in, DoubleVector& out);
+                     const RealVector& in, RealVector& out);
 
     /// An FFT used to for the convolution.
     TVirtualFFT* fFFT;
@@ -245,19 +246,11 @@ private:
     /// A buffer to hold the FFT of the delta function response.
     ComplexVector fResponseFFT;
 
-    /// A buffer to hold the FFT of the induced charge response.  This is only
-    /// used for induction wires.
-    ComplexVector fInducedFFT;
-
-    /// A buffer to hold the FFT of the capacitive coupling response.  This is
-    /// only used for induction wires.
-    ComplexVector fCurrentFFT;
-
     /// Translate the shaped wire charge into digitized values.  This adds the
-    /// digits to the event.
+    /// digits to the event.  This step includes the amplification.
     void DigitizeWires(CP::TEvent& ev, CP::TMCChannelId channel,
-                        const DoubleVector& input,
-                        const DoubleVector& triggers);
+                        const RealVector& input,
+                        const RealVector& triggers);
 
     /// Find the digits in the input range.  The start is the bin number in
     /// input to start looking for a new digit at.  The startBin and stopBin
@@ -267,6 +260,6 @@ private:
     std::pair<int,int> FindDigitRange(int start,
                                       int startBin,
                                       int stopBin,
-                                      const DoubleVector& input);
+                                      const RealVector& input);
 };
 #endif

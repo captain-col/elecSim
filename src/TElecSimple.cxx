@@ -263,7 +263,7 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
     AddElecSimHeader(event);
 
     // Figure out when the triggers will be.  This is usually "just zero".
-    DoubleVector triggerTimes;
+    RealVector triggerTimes;
     GenerateTriggers(event,triggerTimes);
 
     if (triggerTimes.empty()) {
@@ -275,7 +275,7 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
     // times of the first and last triggers.
     fStartSimulation = 100*unit::second;
     fStopSimulation = -100*unit::second;
-    for (DoubleVector::iterator triggerTime = triggerTimes.begin();
+    for (RealVector::iterator triggerTime = triggerTimes.begin();
          triggerTime != triggerTimes.end();
          ++triggerTime) {
         fStartSimulation = std::min(fStartSimulation, 
@@ -290,15 +290,22 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
         if (!CP::TManager::Get().GeomId().CdId(
                 CP::GeomId::Captain::Photosensor(i))) break;
         TMCChannelId pmt(1,0,i);
-        DoubleVector photonTimes;
+        RealVector photonTimes;
         LightSignal(event,pmt,photonTimes);
         DigitizeLight(event,pmt,photonTimes,triggerTimes);
     }
 
-    int chargeBins = (fStopSimulation - fStartSimulation)/fDigitStep;
+    // Calculate the charge bin step.  This can be changed to sub-sample the
+    // charge distribution in each digitization step.
+    double timeStep = fDigitStep/5.0;
+    
+    int chargeBins = (fStopSimulation - fStartSimulation)/timeStep;
     chargeBins = 2*(1+chargeBins/2);
-    DoubleVector collectedCharge(chargeBins);
-    DoubleVector shapedCharge(chargeBins);
+    // Check if the stop time needs to be adjusted.
+    fStopSimulation = fStartSimulation + chargeBins*timeStep;
+
+    RealVector collectedCharge(chargeBins);
+    RealVector shapedCharge(chargeBins);
     
     // For each wire in the detector, figure out the signal.  The loop is done
     // this way so that we don't need to know how many planes and wires are
@@ -415,7 +422,7 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
 }
 
 void CP::TElecSimple::GenerateTriggers(CP::TEvent& event,
-                                       DoubleVector& triggers) {
+                                       RealVector& triggers) {
     triggers.clear();
 
     if (fTriggerWindow <= 0) {
@@ -475,7 +482,7 @@ void CP::TElecSimple::GenerateTriggers(CP::TEvent& event,
 
 void CP::TElecSimple::LightSignal(CP::TEvent& event,
                                   CP::TMCChannelId chan,
-                                  DoubleVector& times) {
+                                  RealVector& times) {
 
     times.clear();
 
@@ -603,8 +610,8 @@ void CP::TElecSimple::LightSignal(CP::TEvent& event,
 }
 
 void CP::TElecSimple::DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
-                                    const DoubleVector& input,
-                                    const DoubleVector& triggers) {
+                                    const RealVector& input,
+                                    const RealVector& triggers) {
 
     // Get the digits container, and create it if it doesn't exist.
     CP::THandle<CP::TDigitContainer> digits
@@ -623,7 +630,7 @@ void CP::TElecSimple::DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
     }
 
     int pmtBins = (fStopSimulation-fStartSimulation)/fPMTStep;
-    DoubleVector shapedCharge(pmtBins);
+    RealVector shapedCharge(pmtBins);
     
     // Add the signal for each photon.
     double signalWidth = 10.0*unit::ns;
@@ -633,7 +640,7 @@ void CP::TElecSimple::DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
         sigNorm += sig;
     }
 
-    for (DoubleVector::const_iterator t = input.begin();
+    for (RealVector::const_iterator t = input.begin();
          t != input.end(); ++t) {
         double pulse = gRandom->Gaus(1.0,fPMTPeak);
         while (pulse < 0.1) pulse = gRandom->Gaus(1.0,fPMTPeak);
@@ -652,14 +659,14 @@ void CP::TElecSimple::DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
 
     // Add the electronics noise.  This is from the electronics, and
     // therefore comes after the shaping.
-    for (DoubleVector::iterator s = shapedCharge.begin();
+    for (RealVector::iterator s = shapedCharge.begin();
          s != shapedCharge.end(); ++s) {
         *s += gRandom->Gaus(0.0,1.0);
     }
 
     double pedestal = fDigitPedestal + gRandom->Uniform(-0.5,0.5);
 
-    for (DoubleVector::const_iterator trigger = triggers.begin();
+    for (RealVector::const_iterator trigger = triggers.begin();
          trigger != triggers.end(); ++trigger) {
         // This is the start time of the digitization window.
         double startTime = *trigger - fDigitPreTriggerTime;
@@ -750,11 +757,114 @@ void CP::TElecSimple::DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
 
 }
 
+
+namespace {
+    // Calculating the induced current on the wire needs the potential if the
+    // wire was held at 1*unit::volt and everything else was grounded, as well
+    // as the electron velocity as a function of position.  That's a fairly
+    // complicated calculation.  It's simplified to assume that the electron
+    // travels in a straight line with an impact parameter of corrected
+    // distance, and at constant velocity.  The potential is simplified to be
+    // 1/r - 1/r_max where rmax is the distance to the wire as the electron
+    // passes the grid plane.  This estimates the shape of
+    // (velocity)*(electric field), and is normalized to so that the integral
+    // from 0.0 to gDist is 1.0.  Notice the sign is set so that this starts
+    // out positive (so that it matchs the behavior of the electronics).
+    double InducedShape(double dist, double impact) {
+        // Distance from wire plane to grid.
+        double gDist = 3.18*unit::mm;
+        if (std::abs(dist) > gDist) return 0.0;
+        // Magnitude of the electric field at a dist from the wire plane.
+        double field = 1.0/std::sqrt(dist*dist + impact*impact)
+            - 1.0/std::sqrt(gDist*gDist + impact*impact);
+        // cosine of the angle between the velocity and the field vector
+        double cosV = dist/sqrt(dist*dist + impact*impact);
+        double current = - cosV*field;
+        // Calculate the normalization (explicitly integrated)
+        double a = sqrt(gDist*gDist+impact*impact);
+        double b = std::log(gDist*gDist+impact*impact)
+            -2.0*(std::log(impact)+1.0);
+        double norm = 0.5*(a*b+2.0*impact)/a;
+        return current/norm;
+    }
+};
+
+/// The charge induced in a time bin by single electron interacting with a
+/// wire.  This is just the current times the bin size.  For the collection
+/// wires, this is simply the electron charge (i.e. 1.0) at tSample of zero
+/// (possibly with small corrections for the impact distance).  For the
+/// induction wires, the total time integral is 0.0.  The induction current is
+/// calculated assuming the wire spacing is 3*mm and plane spacing is 3.18*mm.
+/// The wireImpactDist is the impact distance assuming the electron path were
+/// not distorted by the electric field (and ranges between 0*mm and 3*mm
+double CP::TElecSimple::InducedCharge(bool isCollection,
+                                      double wireImpactDist,
+                                      double tSample,
+                                      double tStep) {
+
+    // The model assumes an infinite plane of wires between two "grid" planes
+    // (which is applicable to both captain and minicaptain), so the induced
+    // charge for an induction plain is symmetric around zero.  The induction
+    // wire planes are assumed to be perfectly transparent (also a good
+    // assumption), and the collection plane is perfectly opaque.
+
+    // Estimate the distance to the wire at the time of the sample.  Don't
+    // calculate an induced charge when the electron is past the grid plane.
+    double dist = fDriftVelocity*tSample;
+    if (dist > 3.18*unit::mm) return 0.0;
+    if (dist < -3.18*unit::mm) return 0.0;
+
+    // Make sure this electron actually passes in the vicinity of the wire.
+    if (wireImpactDist>3.0*unit::mm) return 0.0;
+    if (isCollection && wireImpactDist > 1.5*unit::mm) return 0.0;
+    if (isCollection && tSample>0.0) return 0.0;
+    
+    // As the electron passes a wire, it induces current on the TWO closest
+    // wires (the current on more distant wires is ignored).  As the electron
+    // reachs the plane, the sum of the induced charge on the wires will be
+    // equal to the charge of the electron.  The potential is adjusted so that
+    // the closes drift passes within about 0.5 mm.
+    double correctedImpact
+        = 0.5*unit::mm + wireImpactDist*(2.0*unit::mm)/(3.0*unit::mm);
+    
+    // Estimate the fraction of the charge on the current wire.  The fraction
+    // induced on this wire and the other wire sum to one.
+    double fracWire = 1.0 - correctedImpact/3.0*unit::mm;
+    double fracOther = correctedImpact/3.0*unit::mm;
+#define SQUARE_AVERAGE
+#ifdef SQUARE_AVERAGE
+    // Crudely estimated to go as the square of the distance of closest
+    // approach.
+    double charge = fracWire*fracWire/(fracWire*fracWire+fracOther*fracOther);
+#else
+    // Even more crudely estimated to go linearly as the distance of closest
+    // approach.
+    double charge = fracWire/(fracWire+fracOther);
+#endif
+
+    // Override the charge and corrected impact parameters for collection wires.
+    if (isCollection) {
+        correctedImpact = 0.1*unit::mm;
+        charge = 1.0;
+    }
+    
+    // Take care of the units.
+    double norm = 1.0/fDriftVelocity;
+
+    // Estimate the (normalized) charge in the current sample.
+    double normCharge = InducedShape(dist,correctedImpact)*tStep/norm;
+    
+    // Return the induced charge in the current sample.
+    return charge*normCharge;
+}
+
 bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
                                   CP::TMCChannelId channel,
-                                  DoubleVector& out) {
+                                  RealVector& out) {
 
-    for (DoubleVector::iterator t = out.begin(); t != out.end(); ++t) {
+    CaptLog("Drift " << channel);
+    
+    for (RealVector::iterator t = out.begin(); t != out.end(); ++t) {
         *t = 0;
     }
 
@@ -766,12 +876,18 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
     if (channel.GetType() != 0) return false;
     int plane = channel.GetSequence();
     int wire = channel.GetNumber();
-    
+
     // Move to the frame of the wire being simulated.
     CP::TManager::Get().Geometry(); // just in case...
     if (!CP::TManager::Get().GeomId().CdId(
             CP::GeomId::Captain::Wire(plane,wire))) return false;
 
+    // Depending on the voltage applied to a plane, the wires will either
+    // collect the drifting electrons, or have an induced current.  This is
+    // true if the current wire will collect the charge.
+    bool isCollection = false;
+    if (plane == 0) isCollection = true;
+    
     // Arrays for the transforms.
     double local[3];
     double master[3];
@@ -783,27 +899,16 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
     double collectionEfficiency = 1.0;
 
     // The zone around a wire where change is collected.
-    double collectionZone = 1.5*unit::mm;
-
-    // Assume linear sharing between wires.  This treats each wire separately,
-    // so the sharing is given by a slope. The charge being added to a wire is
-    // q*(1.0+b*collectionSlope) where "b" is the impact parameter.  The model
-    // is that collection wires (ie the X wires) collect everything inside the
-    // collection zone (the split is halfway between the wires).  The
-    // induction wires share charge linearly between the wires.
-    double collectionSlope = 0.0;
-
-    if (plane != 0) {
-        collectionEfficiency = fWireInductionFactor;
-        collectionZone = 3.0*unit::mm;
-        collectionSlope = -1.0/collectionZone;
-    }
+    double collectionZone = 3.0*unit::mm;
+    if (isCollection) collectionZone = 1.5*unit::mm;
     
     // The maximum diffusion.
     double maxDiffusion = collectionZone + 3*unit::mm;
 
-    // The weight to add for each simulated electron.
-    double weight = 1.0;
+    // The weight to for each simulated electron.  If this is greater than
+    // one, the electrons are under sampled so that the simulation can run
+    // faster.
+    double weight = 4.0;
 
     double startedElectrons = 0.0;
     double totalCharge = 0.0;
@@ -835,15 +940,29 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
             continue;
         }
 
-        // This is close, so find the mean number of electrons generated.
-        double electrons 
-            = (1-fRecombination)*seg->GetEnergyDeposit()/fActivationEnergy;
+        // This segment close, so find the mean number of quanta generated.
+        double meanQuanta = seg->GetEnergyDeposit()/fActivationEnergy;
 
-        int nElectrons = 0.5 + gRandom->Poisson(electrons)/weight;
+        // Check to see if this version of DETSIM is saving the energy
+        // deposited as scintillation.  This handles the recombination.
+        double nonIonizing = seg->GetSecondaryDeposit();
+
+        // Estimate the mean number of electrons (first assuming we don't have
+        // help from DETSIM, then overriding the value if DETSIM told us the
+        // answer.
+        double meanElectrons = (1-fRecombination)*meanQuanta;
+        if (nonIonizing>0.0) {
+            meanElectrons = (1.0-nonIonizing/meanQuanta/fActivationEnergy);
+            meanElectrons *= meanQuanta;
+        }
+
+        // Fluctuate the number of electrons.
+        int nElectrons = 0.5 + gRandom->Poisson(meanElectrons)/weight;
 
         startedElectrons += nElectrons;
 
         // Now simulate each electron...
+        double timeStep = (fStopSimulation-fStartSimulation)/out.size();
         for (int e = 0; e<nElectrons; ++e) {
             double v = gRandom->Uniform();
             // Find the location
@@ -855,7 +974,6 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
             // The electrons drift from local positive Z towards zero.  The
             // length of the wire is along Y.
             gGeoManager->MasterToLocal(master,local);
-            
             double driftDistance = local[2];
 
             // It's behind this drift plane, so assume no signal.  Not true,
@@ -865,7 +983,7 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
             // Find the diffusion in position.
             double driftSigma 
                 = std::sqrt(2.0*fDiffusionCoeff*driftDistance/fDriftVelocity
-                            + 0.001);
+                            + 0.001*unit::mm);
             
             // Find the drift time.  If necessary, do the diffusion time
             // spread.
@@ -881,69 +999,90 @@ bool CP::TElecSimple::DriftCharge(CP::TEvent& event,
 
             // Find the distance to the wire.
             double wireDistance = local[0];
+
             if (driftSigma>1E-6) {
                 wireDistance = gRandom->Gaus(wireDistance,driftSigma);
             }
+            wireDistance = std::abs(wireDistance);
 
             // Charges outside of this zone are not collected at all.
-            if (std::abs(wireDistance) > collectionZone) continue;
+            if (wireDistance > collectionZone) continue;
             
             // Add the electron to the collected charge.
             double deltaT = driftTime - fStartSimulation;
-            std::size_t timeBin = deltaT/fDigitStep;
-            if (timeBin >= out.size()) {
+            int timeBin = deltaT/timeStep;
+            if (timeBin < 0 || (int)out.size() <= timeBin) {
                 CaptError("Drift out of time window " << driftTime/unit::ms
                           << " " << timeBin
                           << " " << out.size());
                 continue;
             }
-            
-            // Calculate the collected charge.
-            double charge = weight;
-            charge *= 1.0 + std::abs(wireDistance)*collectionSlope;
-            charge *= collectionEfficiency;
-            if (charge < 0.0) continue;
 
-            // matters for the induction wires.
-            out[timeBin] += charge;
-            totalCharge += charge;
+            // Add the induced charge to the output.
+            if (isCollection) {
+#ifdef USE_DELTA_FUNCTION_FOR_COLLECTION
+                // Charge on the collection plane is approximated as a
+                // delta-function, so just add the charge to the central bin.
+                double charge = weight*collectionEfficiency;
+                out[timeBin] += charge;
+                totalCharge += charge;
+#else
+                // Handle the induced charge on the induction planes.
+                int dBin = 3.18*unit::mm/fDriftVelocity/timeStep + 1;
+                double integral = 0.0;
+                double skewTime = wireDistance/fDriftVelocity;
+                for (int i = timeBin-dBin;
+                     i<timeBin+skewTime/timeStep+1;
+                     ++i) {
+                    if (i<0) continue;
+                    if ((int) out.size() <= i) continue;
+                    double charge = weight;
+                    charge *= collectionEfficiency;
+                    charge *= InducedCharge(isCollection,wireDistance,
+                                            i*timeStep-deltaT-skewTime,
+                                            timeStep);
+                    out[i] += charge;
+                    integral += charge;
+                }
+                totalCharge += integral;
+#endif
+            }
+            else {
+                // Handle the induced charge on the induction planes.
+                int dBin = 3.18*unit::mm/fDriftVelocity/timeStep + 1;
+                double integral = 0.0;
+                for (int i = timeBin-dBin; i<=timeBin+dBin; ++i) {
+                    if (i<0) continue;
+                    if ((int) out.size() <= i) continue;
+                    double charge = weight;
+                    charge *= collectionEfficiency;
+                    charge *= InducedCharge(isCollection,wireDistance,
+                                            i*timeStep-deltaT,timeStep);
+                    out[i] += charge;
+                    integral += std::abs(charge);
+                }
+                totalCharge += integral/2.0;
+            }
         }
     }
 
-    // A particle generates 1 electron per 34 eV of deposited energy, so a
+    CaptLog("    Charge: " << totalCharge);
+    // A particle generates 1 electron per ~20 eV of deposited energy, so a
     // typical MIP will generate ~5000 electrons per mm, so this is a very low
-    // threshold.  If a wire sees less than 10, then it really didn't see
-    // anything (ie ~350 eV of deposited energy).
+    // threshold.  If a wire sees less than 10 electrons, then it really
+    // didn't see anything (ie < few hundred eV of deposited energy).
     return (10 < totalCharge);
 }
 
 void CP::TElecSimple::AddWireNoise(CP::TMCChannelId channel, 
-                                   DoubleVector& out) {
+                                   RealVector& out) {
     if (fWireNoise <= 0.1) return;
     // Add the wire nose.  This is before the electronics and covers "thermal"
     // noise from the wires.
-    for (DoubleVector::iterator o = out.begin(); o != out.end(); ++o) {
+    for (RealVector::iterator o = out.begin(); o != out.end(); ++o) {
         (*o) += gRandom->Gaus(0,fWireNoise);
     }
 }
-
-double CP::TElecSimple::InducedCharge(double tSample) {
-    double val = 0.0;
-    double norm = 0.0;
-    double pulseWidth = 1*unit::microsecond;
-    double xMax = 3.0*unit::mm/fDriftVelocity/pulseWidth;
-    double pulseNorm = 1.0-std::exp(-xMax*xMax/2.0);
-    for (double t = tSample; t<tSample+fDigitStep; t += 0.01*fDigitStep) {
-        double x = std::abs(t)/pulseWidth;
-        if (x<xMax) {
-            val += (std::exp(-x*x/2.0)-std::exp(-xMax*xMax/2.0))/pulseNorm;
-        }
-        norm += 1.0;
-    }
-    val /= norm;
-    return val;
-}
-
 double CP::TElecSimple::PulseShaping(double tSample, double window,
                                      int samples) {
     double val = 0.0;
@@ -959,21 +1098,23 @@ double CP::TElecSimple::PulseShaping(double tSample, double window,
 }
 
 void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
-                                  const DoubleVector& in,
-                                  DoubleVector& out) {
+                                  const RealVector& in,
+                                  RealVector& out) {
     if (out.size() != in.size()) {
         CaptError("Output vector does not match input size.");
         out.resize(in.size());
     }
 
-    bool induction = false;
-    double gain = fAmplifierCollectionGain;
-    if (channel.GetType() == 0 && channel.GetSequence() != 0) {
-        induction = true;
-        gain = fAmplifierInductionGain;
-    }
+
+#ifdef SKIP_SHAPING
+    std::copy(in.begin(), in.end(), out.begin());
+    return;
+#endif
     
-    for (DoubleVector::iterator t = out.begin(); t != out.end(); ++t) {
+    // Find out the time step per simulated sample.
+    double timeStep = (fStopSimulation-fStartSimulation)/in.size();
+    
+    for (RealVector::iterator t = out.begin(); t != out.end(); ++t) {
         *t = 0;
     }
 
@@ -1008,16 +1149,16 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         double responseNorm = 0.0;
         for (int i = 0; i<len; ++i) {
             if (fAmplifierConserveIntegral) {
-                responseNorm += PulseShaping(i*fDigitStep, fDigitStep);
+                responseNorm += PulseShaping(i*timeStep, timeStep);
             }
             else {
                 responseNorm = std::max(
-                    responseNorm,PulseShaping(i*fDigitStep, fDigitStep));
+                    responseNorm,PulseShaping(i*timeStep, timeStep));
             }
         }
         // Take the FFT with the delta function response.
         for (int i = 0; i<len; ++i) {
-            double val = PulseShaping(i*fDigitStep, fDigitStep);
+            double val = PulseShaping(i*timeStep, timeStep);
             fFFT->SetPoint(i,val/responseNorm);
         }
 #ifdef FILL_HISTOGRAM
@@ -1027,61 +1168,22 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
                                   100,
                                   0.0, 100.0);
         for (int i = 0; i<100; ++i) {
-            double val = PulseShaping(i*fDigitStep, fDigitStep);
+
             elecResp->Fill(i+0.5, std::abs(val));
         }
 #endif
-        // Take the transform and safe it for later.
+        // Take the transform and save it for later.
         fFFT->Transform();
         for (int i = 0; i<len; ++i) {
             double rl, im;
             fFFT->GetPointComplex(i,rl,im);
             fResponseFFT[i] = std::complex<double>(rl,im);
         }
-        CaptLog("Create the induced charge FFT");
-        fInducedFFT.resize(in.size());
-        // Find the normalization for the induced charge.
-        double inducedNorm = 0.0;
-        for (int i = 0; i<len; ++i) {
-            int bin = i;
-            if (bin>len/2) bin = bin-len;
-            inducedNorm += InducedCharge(bin*fDigitStep);
-        }
-        // Take the FFT of the induced charge.
-        for (int i = 0; i<len; ++i) {
-            int bin = i;
-            if (bin>len/2) bin = bin-len;
-            double val = InducedCharge(bin*fDigitStep);
-            fFFT->SetPoint(i,val);
-        }
-        fFFT->Transform();
-        // Save the induced charge FFT for later.
-        for (int i = 0; i<len; ++i) {
-            double rl, im;
-            fFFT->GetPointComplex(i,rl,im);
-            fInducedFFT[i] = std::complex<double>(rl,im);
-        }
-        CaptLog("Create the capacitive current FFT");
-        fCurrentFFT.resize(in.size());
-        // Take the FFT of the induced charge.
-        for (int i = 0; i<len; ++i) {
-            fFFT->SetPoint(i,0.0);
-        }
-        fFFT->SetPoint(0,-1.0);
-        fFFT->SetPoint(len-1,1.0);
-        fFFT->Transform();
-        // Save the induced charge FFT for later.
-        for (int i = 0; i<len; ++i) {
-            double rl, im;
-            fFFT->GetPointComplex(i,rl,im);
-            fCurrentFFT[i] = std::complex<double>(rl,im);
-        }
     }
 
     // Take the FFT of the input.
     for (std::size_t i = 0; i<in.size(); ++i) {
         double val = in[i];
-        val *= gain;
         fFFT->SetPoint(i,val);
     }
     fFFT->Transform();
@@ -1092,26 +1194,18 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         fFFT->GetPointComplex(i,rl,im);
         std::complex<double> v(rl,im);
         v *= norm*fResponseFFT[i];
-        if (induction) {
-            v *= fInducedFFT[i];
-            v *= fCurrentFFT[i];
-        }
         fInvertFFT->SetPoint(i,v.real(),v.imag());
     }
     fInvertFFT->Transform();
     for (std::size_t i=0; i<out.size(); ++i) {
         out[i] = norm*fInvertFFT->GetPointReal(i);
-        // Add the electronics noise.  This is from the electronics, and
-        // therefore comes after the shaping.
-        out[i] += gRandom->Gaus(0.0,fDigitNoise/fDigitSlope);
     }
-
 }
 
 void CP::TElecSimple::DigitizeWires(CP::TEvent& ev, 
                                     CP::TMCChannelId channel,
-                                    const DoubleVector& in,
-                                    const DoubleVector& triggers) {
+                                    const RealVector& in,
+                                    const RealVector& triggers) {
     // Get the digits container, and create it if it doesn't exist.
     CP::THandle<CP::TDigitContainer> digits 
         = ev.Get<CP::TDigitContainer>("~/digits/drift");
@@ -1128,13 +1222,22 @@ void CP::TElecSimple::DigitizeWires(CP::TEvent& ev,
         digits = ev.Get<CP::TDigitContainer>("~/digits/drift");
     }
 
+    // Get the gain for this channel.
+    double gain = fAmplifierCollectionGain;
+    if (channel.GetType() == 0 && channel.GetSequence() != 0) {
+        gain = fAmplifierInductionGain;
+    }
+    
     // Randomize the pedestal since it's going to be slightly different for
     // each channel.  This doesn't change the integral value of the pedestal
     // (it always rounds to the same value, but it does shift the probability
     // of the actual ADC mean.
     double pedestal = fDigitPedestal + gRandom->Uniform(-0.5, 0.5);
 
-    for (DoubleVector::const_iterator trigger = triggers.begin();
+    // Calculate the time step for the input.
+    double timeStep = (fStopSimulation-fStartSimulation)/in.size();
+    
+    for (RealVector::const_iterator trigger = triggers.begin();
          trigger != triggers.end(); ++trigger) {
         // This is the start time of the digitization window.
         double startTime = *trigger - fDigitPreTriggerTime;
@@ -1142,10 +1245,10 @@ void CP::TElecSimple::DigitizeWires(CP::TEvent& ev,
         double stopTime = startTime
             + fDigitPreTriggerTime + fDigitPostTriggerTime;
         // This is the first bin in the digitization window
-        int startBin = startTime/fDigitStep;
+        int startBin = startTime/timeStep;
         if (startBin < 0) startBin = 0;
         // This is the last bin in the digitization window
-        int stopBin = startBin + (stopTime-startTime)/fDigitStep;
+        int stopBin = startBin + (stopTime-startTime)/timeStep;
         if (stopBin > (int) in.size()) stopBin = in.size();
         // This is the first bin that might end up in a new digit.
         int lastStop = startBin;
@@ -1163,8 +1266,10 @@ void CP::TElecSimple::DigitizeWires(CP::TEvent& ev,
             // Now copy to the output.  The new digit is between start and scan.
             CP::TPulseDigit::Vector adc;
             CP::TMCDigit::ContributorContainer contrib;
-            for (int bin = digitRange.first; bin < digitRange.second; ++bin) {
-                double val = in[bin]*fDigitSlope;
+            int stride = (int) (fDigitStep/timeStep + 0.5);
+            for (int bin = digitRange.first;
+                 bin < digitRange.second; bin += stride) {
+                double val = in[bin]*gain*fDigitSlope;
                 // Shift the baseline to the pedestal value.
                 val += pedestal;
                 int ival = val;
@@ -1172,7 +1277,8 @@ void CP::TElecSimple::DigitizeWires(CP::TEvent& ev,
                 adc.push_back(ival);
             }
             CP::TPulseMCDigit* digit 
-                = new TPulseMCDigit(channel,digitRange.first-startBin,
+                = new TPulseMCDigit(channel,
+                                    (digitRange.first-startBin)/stride,
                                     adc,contrib);
             digits->push_back(digit);
             
@@ -1188,21 +1294,24 @@ std::pair<int, int>
 CP::TElecSimple::FindDigitRange(int start, 
                                 int startBin, 
                                 int stopBin,
-                                const DoubleVector& input) {
+                                const RealVector& input) {
     if (fDigitThreshold < 0.0) return std::pair<int,int>(startBin,stopBin);
     
     // There is a threshold, so do the zero suppression.
     std::pair<int,int> digitRange = std::make_pair(start,stopBin);
 
+    // Calculate the time step for the input.
+    double timeStep = (fStopSimulation-fStartSimulation)/input.size();
+
     // Convert the threshold from ADC counts to mV (the input is the mV coming
     // out of the amplifiers.
     double threshold = fDigitThreshold/fDigitSlope;
     // The number of bins to save before the threshold is crossed.
-    int preThresholdBins = fDigitPreThreshold/fDigitStep;
+    int preThresholdBins = fDigitPreThreshold/timeStep;
     // The number of bins to save after the threshold is crossed.
-    int postThresholdBins = fDigitPostThreshold/fDigitStep;
+    int postThresholdBins = fDigitPostThreshold/timeStep;
 
-   // Find the first bin in the zero suppressed digit.  The tBin
+    // Find the first bin in the zero suppressed digit.  The tBin
     // variable is the bin where the threshold was crossed.
     int tBin;
     for (tBin=digitRange.first; tBin<digitRange.second; ++tBin) {
