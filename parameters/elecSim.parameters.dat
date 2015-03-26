@@ -82,11 +82,11 @@ on the wires.
 
 The electronics noise quoted in electron equivalent noise.  This parameter
 controls the part of that noise that comes before the amplifier shaping.
-This is the thermal noise from the wires.  The initial value is 650 e-
-taken from IEEE Trans. on Nuc Sci Vol. 58 no. 5, 2011 "Front-End ASIC for a
-Liquid Argon TPC".
+This is the thermal noise from the wires.  The initial value is 650 e- per
+microsecond taken from IEEE Trans. on Nuc Sci Vol. 58 no. 5, 2011
+"Front-End ASIC for a Liquid Argon TPC".
 
-< elecSim.simple.wire.noise = 650 >
+< elecSim.simple.wire.noise = 1300 >
 
 The amplifier shape peaking time.
 
@@ -136,7 +136,7 @@ noise is given ADC counts.  It is inserted into the signal between the
 pulse shaping and the amplification.  This should be tuned to the measured
 noise.
 
-< elecSim.simple.digitization.noise = 7.5 >
+< elecSim.simple.digitization.noise = 6.0 >
 
 The digitization pedestal.
 

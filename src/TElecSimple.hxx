@@ -3,6 +3,7 @@
 
 #include <TEvent.hxx>
 #include <TMCChannelId.hxx>
+#include <TMCDigit.hxx>
 
 #include <vector>
 #include <complex>
@@ -208,15 +209,20 @@ private:
 
     /// Fill a vector full of the photon arrival times for the PMTS.  The
     /// times are sorted from first to last.
-    void LightSignal(CP::TEvent& ev, CP::TMCChannelId chan, RealVector& out);
+    void LightSignal(CP::TEvent& ev, CP::TMCChannelId chan,
+                     RealVector& out,
+                     CP::TMCDigit::ContributorContainer& contrib);
 
     /// Build the digit for a PMT.  This adds the digits to the event.
     void DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
                        const RealVector& input,
-                       const RealVector& triggers);
+                       const RealVector& triggers,
+                       const CP::TMCDigit::ContributorContainer& contrib);
 
     /// Fill a vector full of the charge arrival times for a particular wire.
-    bool DriftCharge(CP::TEvent& ev, CP::TMCChannelId chan, RealVector& out);
+    double DriftCharge(CP::TEvent& ev, CP::TMCChannelId chan,
+                       RealVector& out,
+                       CP::TMCDigit::ContributorContainer& contrib);
 
     /// Add the wire noise to a vector of charge arrival times.
     void AddWireNoise(CP::TMCChannelId channel, RealVector& out);
@@ -237,20 +243,13 @@ private:
     void ShapeCharge(CP::TMCChannelId channel,
                      const RealVector& in, RealVector& out);
 
-    /// An FFT used to for the convolution.
-    TVirtualFFT* fFFT;
-
-    /// An FFT used to invert for the convolution
-    TVirtualFFT* fInvertFFT;
-
-    /// A buffer to hold the FFT of the delta function response.
-    ComplexVector fResponseFFT;
-
     /// Translate the shaped wire charge into digitized values.  This adds the
     /// digits to the event.  This step includes the amplification.
     void DigitizeWires(CP::TEvent& ev, CP::TMCChannelId channel,
-                        const RealVector& input,
-                        const RealVector& triggers);
+                         const RealVector& input,
+                         const RealVector& triggers,
+                         const CP::TMCDigit::ContributorContainer& contrib,
+                         const CP::TMCDigit::InfoContainer& info);
 
     /// Find the digits in the input range.  The start is the bin number in
     /// input to start looking for a new digit at.  The startBin and stopBin
@@ -261,5 +260,15 @@ private:
                                       int startBin,
                                       int stopBin,
                                       const RealVector& input);
+
+    /// An FFT used to for the convolution.
+    TVirtualFFT* fFFT;
+
+    /// An FFT used to invert for the convolution
+    TVirtualFFT* fInvertFFT;
+
+    /// A buffer to hold the FFT of the delta function response.
+    ComplexVector fResponseFFT;
+
 };
 #endif
