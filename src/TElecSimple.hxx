@@ -154,6 +154,9 @@ private:
     /// The time step for each digitization bin.
     double fDigitStep;
     
+    /// The time step oversampling
+    int fDigitOversample;
+    
     /// The time step for the PMT digitiation bins.
     double fPMTStep;
 

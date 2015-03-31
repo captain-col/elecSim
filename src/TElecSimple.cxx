@@ -116,6 +116,12 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.digitization.step");
 
+    // The time step for each digitization bin.
+    fDigitOversample
+        = CP::TRuntimeParameters::Get().GetParameterI(
+            "elecSim.simple.digitization.oversample");
+    if (fDigitOversample < 1) fDigitOversample = 1;
+
     // The amount of time to save before a threshold crossing.
     fDigitPreTriggerTime
         = CP::TRuntimeParameters::Get().GetParameterD(
@@ -298,7 +304,7 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
 
     // Calculate the charge bin step.  This can be changed to sub-sample the
     // charge distribution in each digitization step.
-    double timeStep = fDigitStep/4.0;
+    double timeStep = fDigitStep/fDigitOversample;
 
     // Calculate the number of bins in the TPC samples.
     int chargeBins = (fStopSimulation - fStartSimulation)/timeStep;
@@ -354,6 +360,25 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
                 collectedHist->SetBinContent(i+1,collectedCharge[i]);
             }
             collectedHist->SetBinContent(1,charge);
+#endif
+
+#ifdef FILL_HISTOGRAM
+#undef FILL_HISTOGRAM
+            int binStride = fDigitStep/timeStep + 0.5;
+            TH1F* binnedHist
+                = new TH1F((channel.AsString()+"-binned").c_str(),
+                           ("Collected charge digit step bins for "
+                            + channel.AsString()).c_str(),
+                           collectedCharge.size()/binStride,
+                           0.0, timeStep*collectedCharge.size());
+            for (std::size_t i = 0; i<collectedCharge.size(); i += binStride) {
+                double q = 0.0;
+                for (int b=0; b<binStride; ++b) {
+                    q += collectedCharge[i+b];
+                }
+                binnedHist->SetBinContent(i/binStride+1,q);
+            }
+            binnedHist->SetBinContent(1,charge);
 #endif
 
 #ifdef FILL_HISTOGRAM
@@ -702,13 +727,6 @@ void CP::TElecSimple::DigitizeLight(
             sigMax = std::max(sigMax,sig);
             shapedCharge[bin] += sig;
         }
-    }
-
-    // Add the electronics noise.  This is from the electronics, and
-    // therefore comes after the shaping.
-    for (RealVector::iterator s = shapedCharge.begin();
-         s != shapedCharge.end(); ++s) {
-        *s += gRandom->Gaus(0.0,1.0);
     }
 
     double pedestal = fDigitPedestal + gRandom->Uniform(-0.5,0.5);
@@ -1215,10 +1233,10 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         TH1F* elecResp = new TH1F("elecResp",
                                   "Electronics Response",
                                   100,
-                                  0.0, 100.0);
+                                  0.0, 100.0*timeStep);
         for (int i = 0; i<100; ++i) {
-
-            elecResp->Fill(i+0.5, std::abs(val));
+            double val = PulseShaping(i*timeStep, timeStep);
+            elecResp->SetBinContent(i+1, std::abs(val)/responseNorm);
         }
 #endif
         // Take the transform and save it for later.
@@ -1228,6 +1246,18 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
             fFFT->GetPointComplex(i,rl,im);
             fResponseFFT[i] = std::complex<double>(rl,im);
         }
+
+#ifdef FILL_HISTOGRAM
+#undef FILL_HISTOGRAM
+        TH1F* elecFFT = new TH1F("elecFFT",
+                                  "Electronics Response FFT",
+                                  100,
+                                  0.0, 100.0);
+        for (int i = 0; i<100; ++i) {
+            elecFFT->SetBinContent(i+1, std::abs(fResponseFFT[i]));
+        }
+#endif
+
     }
 
     // Take the FFT of the input.
@@ -1237,7 +1267,7 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
     }
     fFFT->Transform();
 
-    // Take the convolution in frequency space and transform back to time.
+    // Take the convolution in frequency space.
     for (std::size_t i=0; i<in.size(); ++i) {
         double rl, im;
         fFFT->GetPointComplex(i,rl,im);
@@ -1245,10 +1275,32 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         v *= norm*fResponseFFT[i];
         fInvertFFT->SetPoint(i,v.real(),v.imag());
     }
+
+
+#ifdef FILL_HISTOGRAM
+#undef FILL_HISTOGRAM
+    TH1F* shapeFFT
+        = new TH1F((channel.AsString()+"-fft").c_str(),
+                   ("FFT of shaped signal "
+                    + channel.AsString()).c_str(),
+                   in.size(),
+                   0.0, in.size());
+    for (std::size_t i = 0; i<in.size(); ++i) {
+        double rl, im;
+        fFFT->GetPointComplex(i,rl,im);
+        std::complex<double> v(rl,im);
+        v *= norm*fResponseFFT[i];
+        shapeFFT->SetBinContent(i+1,std::abs(v));
+    }
+#endif
+
+    // Transform back to time space.
     fInvertFFT->Transform();
     for (std::size_t i=0; i<out.size(); ++i) {
         out[i] = norm*fInvertFFT->GetPointReal(i);
     }
+
+
 }
 
 void CP::TElecSimple::DigitizeWires(

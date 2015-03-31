@@ -130,6 +130,7 @@ The width of the 1 pe peak (in terms of pe).
 The digitization "frequency" (actually the time per bin).
 
 < elecSim.simple.digitization.step = 500 ns >
+< elecSim.simple.digitization.oversample = 3 >
 
 The digitization noise that is not affected by the pulse shaping.  This
 noise is given ADC counts.  It is inserted into the signal between the
