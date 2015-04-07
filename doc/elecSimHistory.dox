@@ -14,4 +14,38 @@ This is the first frozen implementation of the electronics simulation
 intended as a base for the mini-CAPTAIN cosmic ray production, and for the
 mini-captain neutron response simulations.
 
+
+\section elecSim_v0r1p0_history Version 0.1.0
+
+Freeze information:
+   - Freeze Date: Tue Apr  7 15:02:37 2015
+   - Freeze User: mcgrew
+   - Freeze Host: boxer boxer 
+
+
+BUG FIXES:
+
+NEW FEATURES:
+
+** Use output of NEST from DETSIM 0.0.1 or later to determine the number of
+   electrons and photons to simulate
+
+** Partial tuning based on pulser running.  This includes tuning the noise,
+   and improving the simulated ASIC shaping.
+
+** Parameterize a few hard coded values (e.g. the oversampling)
+
+** Save true amount of charge deposited on a wire using TMCDigit info.
+
+** Improve the model of the induced charge on wire.  This uses
+   Shockley-Ramo to estimate the shape of the induced current by
+   approximating the electron path and the weighting field.  The electrons
+   are assumed to drift with constant velocity and in a straight line at a
+   particular impact parameter relative to the wire.  The weighting field
+   is assumed to be the same as a single wire, but with the condition that
+   the field is zero at the grid planes.  The model incorrectly estimates
+   the magnitude of the induced current, but is useful for estimating the
+   time evolution of the current.  The magnitude of the current is
+   estimated separately and is based on the distance of closest approach.
+
 */
