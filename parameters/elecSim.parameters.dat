@@ -71,7 +71,7 @@ The electron lifetime.  This is set to the target value for the CAPTAIN
 purification system.  The expectations are 1.3 ms for CAPTAIN, and 0.5 ms
 for mini-CAPTAIN.
 
-< elecSim.simple.drift.life = 1.3 ms >
+< elecSim.simple.drift.life = 0.5 ms >
 
 The charge induction factor for the induction wires.  This is assumed to be
 the same for the U and V planes since they have similar electrical
@@ -86,7 +86,7 @@ This is the thermal noise from the wires.  The initial value is 650 e- per
 microsecond taken from IEEE Trans. on Nuc Sci Vol. 58 no. 5, 2011
 "Front-End ASIC for a Liquid Argon TPC".
 
-< elecSim.simple.wire.noise = 1300 >
+< elecSim.simple.wire.noise = 650 >
 
 The amplifier shape peaking time.
 
@@ -135,19 +135,21 @@ The digitization "frequency" (actually the time per bin).
 The digitization noise that is not affected by the pulse shaping.  This
 noise is given ADC counts.  It is inserted into the signal between the
 pulse shaping and the amplification.  This should be tuned to the measured
-noise.
+noise.  Note that this is random sample to sample noise, and is not the
+same as the raw RMS as calculated against the channel.  The raw RMS
+contains the "fixed frequency" noise that can be filtered.  The random
+noise is Gaussian so it's at all frequencies.
 
-< elecSim.simple.digitization.noise = 6.0 >
+< elecSim.simple.digitization.noise = 3.0 >
 
 The digitization pedestal.
 
 < elecSim.simple.digitization.pedestal = 2048 >
 
 The digitizer has a design slope of 2.5 ADC per mV of input voltage from
-the amplifier.  In situ measurements suggest it's actually closer to 2.0
-ADC per mV.
+the amplifier.
 
-< elecSim.simple.digitization.slope = 2.0 >
+< elecSim.simple.digitization.slope = 2.5 >
 
 The ADC maximum value.
 < elecSim.simple.digitization.maximum = 4095 >
