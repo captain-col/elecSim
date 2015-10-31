@@ -168,6 +168,14 @@ private:
     /// will specify the total number of time bins in an event.
     double fDigitPostTriggerTime;
 
+    /// The amount of time before the trigger to start digitization.  This
+    /// will specify the "zero" time bin for the event.
+    double fPMTPreTriggerTime;
+
+    /// The amount of time after the trigger to end digitization.  This
+    /// will specify the total number of time bins in an event.
+    double fPMTPostTriggerTime;
+
     /// The pedestal
     double fDigitPedestal;
 

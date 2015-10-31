@@ -109,7 +109,7 @@ CP::TElecSimple::TElecSimple() {
     // The time step for each PMT digitization bin.
     fPMTStep
         = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.digitization.pmtStep");
+            "elecSim.simple.digitization.step.pmt");
 
     // The time step for each digitization bin.
     fDigitStep
@@ -133,6 +133,18 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.digitization.postTriggerTime");
     if (fDigitPostTriggerTime < 0) fDigitPostTriggerTime = fPostTriggerTime;
+
+    // The amount of time to save before a threshold crossing.
+    fPMTPreTriggerTime
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.digitization.preTriggerTime.pmt");
+    if (fPMTPreTriggerTime < 0) fPMTPreTriggerTime = fPreTriggerTime;
+
+    // The amount of time to save after a threshold crossing.
+    fPMTPostTriggerTime
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.digitization.postTriggerTime.pmt");
+    if (fPMTPostTriggerTime < 0) fPMTPostTriggerTime = fPostTriggerTime;
 
     // The pedestal.  This is then randomized per channel.
     fDigitPedestal
@@ -423,6 +435,16 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
     digitStep->push_back(fPMTStep);  // PMT
     header->AddDatum(digitStep.release());
 
+    // Fill the trigger offset.
+    std::auto_ptr<CP::TRealDatum> triggerOffset(
+        new CP::TRealDatum("triggerOffset"));
+    triggerOffset->clear();
+    triggerOffset->push_back(fDigitPreTriggerTime);  // X Plane
+    triggerOffset->push_back(fDigitPreTriggerTime);  // V Plane
+    triggerOffset->push_back(fDigitPreTriggerTime);  // U Plane
+    triggerOffset->push_back(fPMTPreTriggerTime);  // PMT
+    header->AddDatum(triggerOffset.release());
+
     // Fill the pedestals
     std::auto_ptr<CP::TRealDatum> pedestal(new CP::TRealDatum("pedestal"));
     pedestal->clear();
@@ -572,6 +594,7 @@ void CP::TElecSimple::LightSignal(CP::TEvent& event,
     double masterStop[3];
 
     int totalPhotons = 0.0;
+    double meanPhotons = 0.0;
     for (CP::TDataVector::iterator h = truthHits->begin();
          h != truthHits->end();
          ++h) {
@@ -644,13 +667,14 @@ void CP::TElecSimple::LightSignal(CP::TEvent& event,
             // Estimate the mean number of photons generated at the point of
             // the energy deposition.
             double photons = fPhotonCollection*seg->GetEnergyDeposit();
-            totalPhotons += photons;
 
             // Correct for solid angle
             photons *= solidAngle/(4*unit::pi);
-
+            meanPhotons += photons;
+            
             // Find the number of photons at a PMT.
             int nPhotons = gRandom->Poisson(photons);
+            totalPhotons += nPhotons;
 
             if (nPhotons > 0) {
                 contrib.push_back(seg);
@@ -703,7 +727,7 @@ void CP::TElecSimple::DigitizeLight(
 
     int pmtBins = (fStopSimulation-fStartSimulation)/fPMTStep;
     RealVector shapedCharge(pmtBins);
-
+    
     // Add the signal for each photon.
     double signalWidth = 10.0*unit::ns;
     double sigNorm = 0.0;
@@ -712,6 +736,8 @@ void CP::TElecSimple::DigitizeLight(
         sigNorm += sig;
     }
 
+    double totalSignal = 0.0;
+    double gainSignal = 0.0;
     for (RealVector::const_iterator t = input.begin();
          t != input.end(); ++t) {
         double pulse = gRandom->Gaus(1.0,fPMTPeak);
@@ -721,27 +747,28 @@ void CP::TElecSimple::DigitizeLight(
             int bin = (*t + val)/fPMTStep;
             double v = *t + 2*val - bin*fPMTStep;
             double sig = v*std::exp(-1.0-v/signalWidth)/signalWidth;
-            sig *= pulse;
+            sig *= pulse/sigNorm;;
+            totalSignal += sig;
             sig *= fAmplifierPMTGain;
-            sig /= sigNorm;
+            gainSignal += sig;
             sigMax = std::max(sigMax,sig);
             shapedCharge[bin] += sig;
         }
     }
-
+    
     double pedestal = fDigitPedestal + gRandom->Uniform(-0.5,0.5);
 
     for (RealVector::const_iterator trigger = triggers.begin();
          trigger != triggers.end(); ++trigger) {
         // This is the start time of the digitization window.
-        double startTime = *trigger - fDigitPreTriggerTime;
+        double startTime = *trigger - fPMTPreTriggerTime;
         // This is the stop time of the digitization window.
-        double stopTime = *trigger + fDigitPostTriggerTime;
+        double stopTime = *trigger + fPMTPostTriggerTime;
         // This is the first bin in the digitization window
-        int startBin = startTime/fPMTStep;
-        if (startBin < 0) startBin = 0;
+        int startBin = startTime/fPMTStep - fStartSimulation/fPMTStep;
         // This is the last bin in the digitization window
-        int stopBin = 1 + stopTime/fPMTStep;
+        int stopBin = startBin + (stopTime-startTime)/fPMTStep;
+        if (startBin < 0) startBin = 0;
         if (stopBin > (int) shapedCharge.size()) stopBin = shapedCharge.size();
         // This is the first bin that might end up in a new digit.
         int lastStop = startBin;
@@ -802,9 +829,11 @@ void CP::TElecSimple::DigitizeLight(
                           << " " << digitRange.second);
 
             // Now copy to the output.  The new digit is between start and scan.
+            double digitizedTotal = 0.0;
             CP::TPulseDigit::Vector adc;
             for (int bin = digitRange.first; bin < digitRange.second; ++bin) {
                 double val = shapedCharge[bin];
+                digitizedTotal += val;
                 // Shift the baseline to the pedestal value.
                 val += pedestal;
                 int ival = val;
@@ -820,7 +849,6 @@ void CP::TElecSimple::DigitizeLight(
     }
 
 }
-
 
 namespace {
     // Calculating the induced current on the wire needs the potential if the

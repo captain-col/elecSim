@@ -132,6 +132,10 @@ The digitization "frequency" (actually the time per bin).
 < elecSim.simple.digitization.step = 500 ns >
 < elecSim.simple.digitization.oversample = 3 >
 
+The PMT digitizer time step
+
+< elecSim.simple.digitization.step.pmt = 4 ns > 
+
 The digitization noise that is not affected by the pulse shaping.  This
 noise is given ADC counts.  It is inserted into the signal between the
 pulse shaping and the amplification.  This should be tuned to the measured
@@ -162,6 +166,8 @@ than zero, then use elecSim.simple.preTriggerTime.
 
 < elecSim.simple.digitization.preTriggerTime = -1 >
 < elecSim.simple.digitization.postTriggerTime = -1 >
+< elecSim.simple.digitization.preTriggerTime.pmt = 5 us >
+< elecSim.simple.digitization.postTriggerTime.pmt = 20 us >
 
 The digitization threshold.  A signal level over this triggers saving a
 digit.   This is the difference between the current signal and the averaged
@@ -178,8 +184,4 @@ the same as elecSim.simple.digitization.preTriggerTime
 The post signal time to save into a digit.  If less than zero, then this is
 the same as elecSim.simple.digitization.postTriggerTIme
 < elecSim.simple.digitization.postThreshold = 50 us >
-
-The PMT digitizer time step
-
-< elecSim.simple.digitization.pmtStep = 4 ns > 
 
