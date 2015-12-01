@@ -222,6 +222,9 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.light.collection");
 
+    fPMTDarkCurrent = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.light.darkCurrent");
+
     fShortFraction
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.light.shortFraction");
@@ -686,20 +689,28 @@ void CP::TElecSimple::LightSignal(CP::TEvent& event,
                     double t = gRandom->Exp(fShortTime);
                     // This assumes that the UV index of refraction is 1.0
                     t += startT + distance/unit::c_light;
-                    t -= fStartSimulation;
                     times.push_back(t);
                 }
                 else {
                     double t = gRandom->Exp(fLongTime);
                     // This assumes that the UV index of refraction is 1.0
                     t += startT + distance/unit::c_light;
-                    t -= fStartSimulation;
                     times.push_back(t);
                 }
             }
         }
     }
 
+    // Add the effect of dark noise to the pmt.
+    double deltaT = fStopSimulation - fStartSimulation;
+    double meanNoise = deltaT * fPMTDarkCurrent;
+    if (meanNoise > 0) {
+        int noisePhotons = gRandom->Poisson(meanNoise);
+        while (0 < noisePhotons--) {
+            times.push_back(gRandom->Uniform(fStartSimulation,fStopSimulation));
+        }
+    }
+    
     std::sort(times.begin(), times.end());
 }
 
@@ -743,9 +754,10 @@ void CP::TElecSimple::DigitizeLight(
         double pulse = gRandom->Gaus(1.0,fPMTPeak);
         while (pulse < 0.1) pulse = gRandom->Gaus(1.0,fPMTPeak);
         double sigMax = 0.0;
+        double dt = *t - fStartSimulation;
         for (double val = 0.0; val < 10.0*signalWidth; val += fPMTStep) {
-            int bin = (*t + val)/fPMTStep;
-            double v = *t + 2*val - bin*fPMTStep;
+            int bin = (dt + val)/fPMTStep;
+            double v = dt + 2*val - bin*fPMTStep;
             double sig = v*std::exp(-1.0-v/signalWidth)/signalWidth;
             sig *= pulse/sigNorm;;
             totalSignal += sig;

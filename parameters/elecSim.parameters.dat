@@ -35,7 +35,7 @@ efficiency (assuming 22%).
 
 The dark noise for the PMTs.
 
-< elecSim.simple.light.darkCurrent = 100 Hz >
+< elecSim.simple.light.darkCurrent = 500 Hz >
 
 The fraction of the light in the short time component of the scintillator.
 This comes from a fit by Ion Stancu (shown on 13 Feb 2014)

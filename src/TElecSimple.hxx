@@ -74,6 +74,9 @@ private:
     /// simulation!  This is expressed in terms of photons collected per MeV.
     double fPhotonCollection;
 
+    /// The dark current for the PMTs
+    double fPMTDarkCurrent;
+    
     /// The fraction of the light emitted in the short part of the
     /// scintillation
     double fShortFraction;
