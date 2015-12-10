@@ -116,7 +116,7 @@ The amplifier gain for the collection wires.  The ADC has design gain of
 The amplifier gain for the induction wires.  The ADC has design gain of
 4.7, 7.8, 14, or 25 mV/fC.  The units are mV/fC.
 
-< elecSim.simple.amplifier.gain.induction = 14 >
+< elecSim.simple.amplifier.gain.induction = 25 >
 
 The amplifier gain for the PMTs.  A different front end is used that
 for the TPC, so the gains are different.  The units are adc/pe.
@@ -144,7 +144,7 @@ same as the raw RMS as calculated against the channel.  The raw RMS
 contains the "fixed frequency" noise that can be filtered.  The random
 noise is Gaussian so it's at all frequencies.
 
-< elecSim.simple.digitization.noise = 3.0 >
+< elecSim.simple.digitization.noise = 1.5 >
 
 The digitization pedestal.
 
