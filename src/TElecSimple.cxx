@@ -256,6 +256,23 @@ CP::TElecSimple::~TElecSimple() {}
 void CP::TElecSimple::operator()(CP::TEvent& event) {
     CaptLog("Event " << event.GetContext());
 
+    if (event.GetContext().IsCAPTAIN()) {
+        if (CP::TRuntimeParameters::Get().HasParameter(
+                "elecSim.simple.drift.life.capt")) {
+            fElectronLife
+                = CP::TRuntimeParameters::Get().GetParameterD(
+                    "elecSim.simple.drift.life.capt");
+        }
+    }
+    else if (event.GetContext().IsMiniCAPTAIN()) {
+        if (CP::TRuntimeParameters::Get().HasParameter(
+                "elecSim.simple.drift.life.mini")) {
+            fElectronLife
+                = CP::TRuntimeParameters::Get().GetParameterD(
+                    "elecSim.simple.drift.life.mini");
+        }
+    }
+    
     // Check that the event has the truth hits.
     CP::THandle<CP::TDataVector> truthHits
         = event.Get<CP::TDataVector>("truth/g4Hits");

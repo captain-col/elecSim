@@ -53,7 +53,8 @@ from a fit by Ion Stancu (shown on 13 Feb 2014)
 < elecSim.simple.light.longTime = 917 ns >
 
 The probability that the electron will recombine with the argon ion.  This
-is tuned to ICARUS measurements.
+is tuned to ICARUS measurements.  If "non-ionizing energy" field in the
+geant step field has been filled, this won't be used.
 < elecSim.simple.recombinationProb = 0.4291 >
 
 The activation (ionization) energy for argon
@@ -71,7 +72,9 @@ The electron lifetime.  This is set to the target value for the CAPTAIN
 purification system.  The expectations are 1.3 ms for CAPTAIN, and 0.5 ms
 for mini-CAPTAIN.
 
-< elecSim.simple.drift.life = 0.5 ms >
+< elecSim.simple.drift.life = 1.3 ms >
+< elecSim.simple.drift.life.capt = 1.3 ms >
+< elecSim.simple.drift.life.mini = 0.5 ms >
 
 The charge induction factor for the induction wires.  This is assumed to be
 the same for the U and V planes since they have similar electrical
