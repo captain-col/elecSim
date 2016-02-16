@@ -330,8 +330,9 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
         TMCChannelId pmt(1,0,i);
         RealVector photonTimes;
         CP::TMCDigit::ContributorContainer contrib;
-        LightSignal(event,pmt,photonTimes,contrib);
-        DigitizeLight(event,pmt,photonTimes,triggerTimes,contrib);
+        CP::TMCDigit::InfoContainer info;
+        LightSignal(event,pmt,photonTimes,contrib,info);
+        DigitizeLight(event,pmt,photonTimes,triggerTimes,contrib,info);
     }
 
     // Calculate the charge bin step.  This can be changed to sub-sample the
@@ -372,9 +373,9 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
             // is a very low threshold.  If a wire sees less than 10
             // electrons, then it really didn't see anything (ie < few hundred
             // eV of deposited energy).
-            double charge = DriftCharge(event,channel,collectedCharge,contrib);
+            double charge = DriftCharge(event,channel,collectedCharge,
+                                        contrib,info);
             if (charge<10) continue;
-            info.push_back(charge);
             AddWireNoise(channel,collectedCharge);
             ShapeCharge(channel,collectedCharge,shapedCharge);
             DigitizeWire(event,channel,shapedCharge,triggerTimes,
@@ -587,10 +588,12 @@ void CP::TElecSimple::GenerateTriggers(CP::TEvent& event,
 
 }
 
-void CP::TElecSimple::LightSignal(CP::TEvent& event,
-                                  CP::TMCChannelId chan,
-                                  RealVector& times,
-                                  CP::TMCDigit::ContributorContainer& contrib) {
+void CP::TElecSimple::LightSignal(
+    CP::TEvent& event,
+    CP::TMCChannelId chan,
+    RealVector& times,
+    CP::TMCDigit::ContributorContainer& contrib,
+    CP::TMCDigit::InfoContainer& info) {
 
     times.clear();
 
@@ -695,9 +698,10 @@ void CP::TElecSimple::LightSignal(CP::TEvent& event,
             // Find the number of photons at a PMT.
             int nPhotons = gRandom->Poisson(photons);
             totalPhotons += nPhotons;
-
+            
             if (nPhotons > 0) {
                 contrib.push_back(seg);
+                info.push_back(nPhotons);
             }
 
             for (int i=0; i< nPhotons; ++i) {
@@ -729,13 +733,16 @@ void CP::TElecSimple::LightSignal(CP::TEvent& event,
     }
     
     std::sort(times.begin(), times.end());
+
+    return;
 }
 
 void CP::TElecSimple::DigitizeLight(
     CP::TEvent& ev, CP::TMCChannelId channel,
     const RealVector& input,
     const RealVector& triggers,
-    const CP::TMCDigit::ContributorContainer& contrib) {
+    const CP::TMCDigit::ContributorContainer& contrib,
+    const CP::TMCDigit::InfoContainer& info) {
 
     // Get the digits container, and create it if it doesn't exist.
     CP::THandle<CP::TDigitContainer> digits
@@ -875,7 +882,7 @@ void CP::TElecSimple::DigitizeLight(
             }
             CP::TPulseMCDigit* digit
                 = new TPulseMCDigit(channel,digitRange.first-startBin,
-                                    adc,contrib);
+                                    adc,contrib,info);
             digits->push_back(digit);
             lastStop = digitRange.second;
         } while (lastStop < stopBin);
@@ -986,7 +993,9 @@ double CP::TElecSimple::InducedCharge(bool isCollection,
 
 double CP::TElecSimple::DriftCharge(
     CP::TEvent& event, CP::TMCChannelId channel,
-    RealVector& out, CP::TMCDigit::ContributorContainer& contrib) {
+    RealVector& out,
+    CP::TMCDigit::ContributorContainer& contrib,
+    CP::TMCDigit::InfoContainer& info) {
 
     for (RealVector::iterator t = out.begin(); t != out.end(); ++t) {
         *t = 0;
@@ -1173,6 +1182,7 @@ double CP::TElecSimple::DriftCharge(
                     integral += charge;
                 }
                 totalCharge += integral;
+                segCharge += integral;
             }
             else {
                 // Handle the induced charge on the induction planes.
@@ -1189,6 +1199,7 @@ double CP::TElecSimple::DriftCharge(
                     integral += std::abs(charge);
                 }
                 totalCharge += integral/2.0;
+                segCharge += integral/2.0;
             }
         }
 
@@ -1196,6 +1207,7 @@ double CP::TElecSimple::DriftCharge(
         // contributors.
         if (segCharge > 0) {
             contrib.push_back(seg);
+            info.push_back(segCharge);
         }
     }
 

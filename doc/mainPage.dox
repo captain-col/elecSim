@@ -24,4 +24,14 @@ The simulation for each part of the detector consists of:
 
 See related pages for release history and bug list.
 
+\section elecSimTruth Truth Information
+
+The true amount of charge (or light), as well as the segment of track that
+generated the energy deposition, is saved with each simulated digit as a
+pair of parallel arrays.  The hit segments (i.e. pointers to TG4HitSegment
+objects) are saved as a vector of contributors [accessed with
+CP::TMCDigit::GetContributors()], and the associated deposit is saved in
+the information array CP::TMCDigit::GetInformation().  The units for the
+charge are in HEPUnits, and the units for light are in photo-electrons.
+
 */

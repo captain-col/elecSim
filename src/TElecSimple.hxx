@@ -225,18 +225,24 @@ private:
     /// times are sorted from first to last.
     void LightSignal(CP::TEvent& ev, CP::TMCChannelId chan,
                      RealVector& out,
-                     CP::TMCDigit::ContributorContainer& contrib);
-
-    /// Build the digit for a PMT.  This adds the digits to the event.
+                     CP::TMCDigit::ContributorContainer& contrib,
+                     CP::TMCDigit::InfoContainer& info);
+    
+    /// Build the digit for a PMT.  This adds the digits to the event.  The
+    /// input vector contains the times of the photon arrival at the channel,
+    /// The triggers vector is an input of the times that the trigger
+    /// criteria was met.
     void DigitizeLight(CP::TEvent& ev, CP::TMCChannelId channel,
                        const RealVector& input,
                        const RealVector& triggers,
-                       const CP::TMCDigit::ContributorContainer& contrib);
+                       const CP::TMCDigit::ContributorContainer& contrib,
+                       const CP::TMCDigit::InfoContainer& info);
 
     /// Fill a vector full of the charge arrival times for a particular wire.
     double DriftCharge(CP::TEvent& ev, CP::TMCChannelId chan,
                        RealVector& out,
-                       CP::TMCDigit::ContributorContainer& contrib);
+                       CP::TMCDigit::ContributorContainer& contrib,
+                       CP::TMCDigit::InfoContainer& info);
 
     /// Add the wire noise to a vector of charge arrival times.
     void AddWireNoise(CP::TMCChannelId channel, RealVector& out);
