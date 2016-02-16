@@ -377,8 +377,8 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
             info.push_back(charge);
             AddWireNoise(channel,collectedCharge);
             ShapeCharge(channel,collectedCharge,shapedCharge);
-            DigitizeWires(event,channel,shapedCharge,triggerTimes,
-                          contrib,info);
+            DigitizeWire(event,channel,shapedCharge,triggerTimes,
+                         contrib,info);
 
 #ifdef FILL_HISTOGRAM
 #undef FILL_HISTOGRAM
@@ -754,8 +754,12 @@ void CP::TElecSimple::DigitizeLight(
     }
 
     int pmtBins = (fStopSimulation-fStartSimulation)/fPMTStep;
-    RealVector shapedCharge(pmtBins);
     
+    static RealVector shapedCharge;
+    if (shapedCharge.size() < pmtBins) {
+        shapedCharge.resize(pmtBins);
+    }
+
     // Add the signal for each photon.
     double signalWidth = 10.0*unit::ns;
     double sigNorm = 0.0;
@@ -1360,7 +1364,7 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
 
 }
 
-void CP::TElecSimple::DigitizeWires(
+void CP::TElecSimple::DigitizeWire(
     CP::TEvent& ev, CP::TMCChannelId channel,
     const RealVector& in,
     const RealVector& triggers,

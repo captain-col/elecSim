@@ -259,7 +259,7 @@ private:
 
     /// Translate the shaped wire charge into digitized values.  This adds the
     /// digits to the event.  This step includes the amplification.
-    void DigitizeWires(CP::TEvent& ev, CP::TMCChannelId channel,
+    void DigitizeWire(CP::TEvent& ev, CP::TMCChannelId channel,
                          const RealVector& input,
                          const RealVector& triggers,
                          const CP::TMCDigit::ContributorContainer& contrib,
