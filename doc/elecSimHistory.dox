@@ -48,4 +48,23 @@ NEW FEATURES:
    time evolution of the current.  The magnitude of the current is
    estimated separately and is based on the distance of closest approach.
 
+
+\section elecSim_v0r2p0_history Version 0.2.0
+
+Freeze information:
+   - Freeze Date: Thu Feb 25 14:02:26 2016
+   - Freeze User: mcgrew
+   - Freeze Host: boxer boxer 
+
+
+FEATURES:
+
+* Simulate a shorter PMT FADC window.
+
+* Add different parameters for CAPTAIN and miniCAPTAIN
+
+* Record the true charge generated for each TG4HitSegment into the digit.
+
+* Add dark current to the PMT.
+
 */
