@@ -119,7 +119,7 @@ The amplifier gain for the collection wires.  The ADC has design gain of
 The amplifier gain for the induction wires.  The ADC has design gain of
 4.7, 7.8, 14, or 25 mV/fC.  The units are mV/fC.
 
-< elecSim.simple.amplifier.gain.induction = 25 >
+< elecSim.simple.amplifier.gain.induction = 14 >
 
 The amplifier gain for the PMTs.  A different front end is used that
 for the TPC, so the gains are different.  The units are adc/pe.
