@@ -448,7 +448,7 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
     }
 
     // Fill the digit steps.
-    std::auto_ptr<CP::TRealDatum> digitStep(new CP::TRealDatum("digitStep"));
+    std::unique_ptr<CP::TRealDatum> digitStep(new CP::TRealDatum("digitStep"));
     digitStep->clear();
     digitStep->push_back(fDigitStep);  // X Plane
     digitStep->push_back(fDigitStep);  // V Plane
@@ -457,7 +457,7 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
     header->AddDatum(digitStep.release());
 
     // Fill the trigger offset.
-    std::auto_ptr<CP::TRealDatum> triggerOffset(
+    std::unique_ptr<CP::TRealDatum> triggerOffset(
         new CP::TRealDatum("triggerOffset"));
     triggerOffset->clear();
     triggerOffset->push_back(fDigitPreTriggerTime);  // X Plane
@@ -467,7 +467,7 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
     header->AddDatum(triggerOffset.release());
 
     // Fill the pedestals
-    std::auto_ptr<CP::TRealDatum> pedestal(new CP::TRealDatum("pedestal"));
+    std::unique_ptr<CP::TRealDatum> pedestal(new CP::TRealDatum("pedestal"));
     pedestal->clear();
     pedestal->push_back(fDigitPedestal);  // X Plane
     pedestal->push_back(fDigitPedestal);  // V Plane
@@ -476,7 +476,7 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
     header->AddDatum(pedestal.release());
 
     // Fill amplifier gains (voltage/(input charge))
-    std::auto_ptr<CP::TRealDatum> gain(new CP::TRealDatum("gain"));
+    std::unique_ptr<CP::TRealDatum> gain(new CP::TRealDatum("gain"));
     gain->clear();
     gain->push_back(fAmplifierCollectionGain); // X Plane
     gain->push_back(fAmplifierInductionGain);  // V Plane
@@ -485,7 +485,7 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
     header->AddDatum(gain.release());
 
     // Fill the digitizer slopes (ADC/mV).
-    std::auto_ptr<CP::TRealDatum> slope(new CP::TRealDatum("slope"));
+    std::unique_ptr<CP::TRealDatum> slope(new CP::TRealDatum("slope"));
     slope->clear();
     slope->push_back(fDigitSlope);  // X Plane
     slope->push_back(fDigitSlope);  // V Plane
@@ -494,7 +494,7 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
     header->AddDatum(slope.release());
 
     /// Fill the shape times.
-    std::auto_ptr<CP::TRealDatum> shapeTime(new CP::TRealDatum("shape"));
+    std::unique_ptr<CP::TRealDatum> shapeTime(new CP::TRealDatum("shape"));
     shapeTime->clear();
     shapeTime->push_back(fAmplifierRise);    // X Plane
     shapeTime->push_back(fAmplifierRise);    // V Plane
@@ -503,7 +503,7 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
     header->AddDatum(shapeTime.release());
 
     /// Fill the rising edge shape.
-    std::auto_ptr<CP::TRealDatum> shapeRise(new CP::TRealDatum("shapeRise"));
+    std::unique_ptr<CP::TRealDatum> shapeRise(new CP::TRealDatum("shapeRise"));
     shapeRise->clear();
     shapeRise->push_back(fAmplifierRiseShape);    // X Plane
     shapeRise->push_back(fAmplifierRiseShape);    // V Plane
@@ -512,7 +512,7 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
     header->AddDatum(shapeRise.release());
 
     /// Fill the falling edge shape.
-    std::auto_ptr<CP::TRealDatum> shapeFall(new CP::TRealDatum("shapeFall"));
+    std::unique_ptr<CP::TRealDatum> shapeFall(new CP::TRealDatum("shapeFall"));
     shapeFall->clear();
     shapeFall->push_back(fAmplifierFallShape);    // X Plane
     shapeFall->push_back(fAmplifierFallShape);    // V Plane
@@ -521,7 +521,7 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
     header->AddDatum(shapeFall.release());
 
     /// Fill the drift velocity and electron lifetime.
-    std::auto_ptr<CP::TRealDatum> argonState(new CP::TRealDatum("argon"));
+    std::unique_ptr<CP::TRealDatum> argonState(new CP::TRealDatum("argon"));
     argonState->clear();
     argonState->push_back(fDriftVelocity);
     argonState->push_back(fElectronLife);
