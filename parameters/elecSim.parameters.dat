@@ -147,7 +147,7 @@ same as the raw RMS as calculated against the channel.  The raw RMS
 contains the "fixed frequency" noise that can be filtered.  The random
 noise is Gaussian so it's at all frequencies.
 
-< elecSim.simple.digitization.noise = 1.5 >
+< elecSim.simple.digitization.noise = 0.3 >
 
 The digitization pedestal.
 

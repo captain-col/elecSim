@@ -760,7 +760,7 @@ void CP::TElecSimple::DigitizeLight(
         digits = ev.Get<CP::TDigitContainer>("~/digits/pmt");
     }
 
-    int pmtBins = (fStopSimulation-fStartSimulation)/fPMTStep;
+    std::size_t pmtBins = (fStopSimulation-fStartSimulation)/fPMTStep;
     
     static RealVector shapedCharge;
     if (shapedCharge.size() < pmtBins) {
@@ -1216,16 +1216,23 @@ double CP::TElecSimple::DriftCharge(
 
 void CP::TElecSimple::AddWireNoise(CP::TMCChannelId channel,
                                    RealVector& out) {
+    // Add the wire nose.  This is before the electronics and covers "thermal"
+    // noise from the wires.
     if (fWireNoise <= 0.1) return;
 
-    // Translate the wire noise into electrons per bin.
+    // Translate the wire noise into electrons per bin and set the number of
+    // samples that the noise is correlated over.  The number of correlated
+    // samples is set by scaling, and should be parameterized so it can be fit
+    // to the data.
     double timeStep = (fStopSimulation-fStartSimulation)/out.size();
     double sampleNoise = fWireNoise*std::sqrt(timeStep/(1000.0*unit::ns));
 
-    // Add the wire nose.  This is before the electronics and covers "thermal"
-    // noise from the wires.
     for (RealVector::iterator o = out.begin(); o != out.end(); ++o) {
-        (*o) += gRandom->Gaus(0,sampleNoise);
+        double v;
+        do {
+            v = gRandom->Gaus(0,sampleNoise);
+        } while (std::abs(v) > 2.5*sampleNoise) ;
+        (*o) += v;
     }
 }
 
@@ -1404,12 +1411,18 @@ void CP::TElecSimple::DigitizeWire(
         gain = fAmplifierInductionGain;
     }
 
+    // Check for numeric problems
+    for (RealVector::const_iterator i = in.begin(); i != in.end(); ++i) {
+        if (!std::isfinite(*i)) {
+            CaptError("INVALID NUMERIC SAMPLE");
+        }
+    }
+    
     // Randomize the pedestal since it's going to be slightly different for
     // each channel.  This doesn't change the integral value of the pedestal
     // (it always rounds to the same value, but it does shift the probability
     // of the actual ADC mean.
-    // double pedestal = fDigitPedestal + gRandom->Uniform(-0.5, 0.5);
-    double pedestal = fDigitPedestal;
+    double pedestal = fDigitPedestal + gRandom->Uniform(-0.5, 0.5);
 
     // Calculate the time step for the input.
     double timeStep = (fStopSimulation-fStartSimulation)/in.size();
@@ -1449,6 +1462,14 @@ void CP::TElecSimple::DigitizeWire(
                 val += gRandom->Gaus(0,fDigitNoise);
                 int ival = val+0.5;
                 ival = std::max(fDigitMinimum,std::min(ival,fDigitMaximum));
+                if (ival<1) {
+                    CaptError("Sample underflow " << adc.size() << " " << ival);
+                    ival = 1;
+                }
+                else if (ival>4095) {
+                    CaptError("Sample overflow " << adc.size() << " " << ival);
+                    ival = 4095;
+                }
                 adc.push_back(ival);
             }
             CP::TPulseMCDigit* digit
