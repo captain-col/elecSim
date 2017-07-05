@@ -63,6 +63,11 @@ private:
     /// in the wires (and is not associated with the amplifier).
     double fWireNoise;
 
+    /// The spectral noise RMS.  This is the noise that has a specific
+    /// spectral depencence.  The RMS is sqrt(sum(power_i)), where power_i is
+    /// the power in each frequency bin.
+    double fSpectralNoise;
+
     /// The charge induction factor for the induction wires.  This is assumed
     /// to be the same for the U and V planes since they have similar
     /// electrical properties.  A factor of 1.0 means that an average charge
@@ -244,9 +249,44 @@ private:
                        CP::TMCDigit::ContributorContainer& contrib,
                        CP::TMCDigit::InfoContainer& info);
 
-    /// Add the wire noise to a vector of charge arrival times.
+    /// Add the wire noise to a vector of charge arrival times.  This noise is
+    /// added in the time domain, so it can be added directly to the drifted
+    /// charge.  This is controlled by elecSim.simple.wire.noise.
     void AddWireNoise(CP::TMCChannelId channel, RealVector& out);
     
+    /// Generate the background spectrum that can be added to the wire.  This
+    /// is where in stocastic noise which has a specific frequency spectrum
+    /// can be added as well as any backgrounds induced because of ground
+    /// loops (etc).
+    void GenerateBackgroundSpectrum(CP::TMCChannelId channel,
+                                    ComplexVector& out);
+    
+    /// Fill a vector with the shaped values for the charge.
+    void ShapeCharge(CP::TMCChannelId channel,
+                     const RealVector& in, const ComplexVector& bkg,
+                     RealVector& out);
+
+    /// Translate the shaped wire charge into digitized values.  This adds the
+    /// digits to the event.  This step includes the amplification.
+    void DigitizeWire(CP::TEvent& ev, CP::TMCChannelId channel,
+                         const RealVector& input,
+                         const RealVector& triggers,
+                         const CP::TMCDigit::ContributorContainer& contrib,
+                         const CP::TMCDigit::InfoContainer& info);
+
+    /// Calculating the induced current on the wire needs the potential if the
+    /// wire was held at 1*unit::volt and everything else was grounded, as
+    /// well as the electron velocity as a function of position.  That's a
+    /// fairly complicated calculation.  It's simplified to assume that the
+    /// electron travels in a straight line with an impact parameter of
+    /// corrected distance, and at constant velocity.  The potential is
+    /// simplified to be 1/r - 1/r_max where rmax is the distance to the wire
+    /// as the electron passes the grid plane.  This estimates the shape of
+    /// (velocity)*(electric field), and is normalized to so that the integral
+    /// from 0.0 to gDist is 1.0.  Notice the sign is set so that this starts
+    /// out positive (so that it matchs the behavior of the electronics).
+    double InducedShape(double dist, double impact);
+
     /// The pulse shape from a delta function impulse at t equal to zero.
     /// This is not normalized.  It takes three parameters: "t" is the time
     /// since the delta-function impulse, "w" is the window to average the
@@ -258,18 +298,6 @@ private:
     /// charge passes.  This is normalized to the electron charge.
     double InducedCharge(bool isCollection, double impact,
                          double tSample, double sStep);
-    
-    /// Fill a vector with the shaped values for the charge.
-    void ShapeCharge(CP::TMCChannelId channel,
-                     const RealVector& in, RealVector& out);
-
-    /// Translate the shaped wire charge into digitized values.  This adds the
-    /// digits to the event.  This step includes the amplification.
-    void DigitizeWire(CP::TEvent& ev, CP::TMCChannelId channel,
-                         const RealVector& input,
-                         const RealVector& triggers,
-                         const CP::TMCDigit::ContributorContainer& contrib,
-                         const CP::TMCDigit::InfoContainer& info);
 
     /// Find the digits in the input range.  The start is the bin number in
     /// input to start looking for a new digit at.  The startBin and stopBin

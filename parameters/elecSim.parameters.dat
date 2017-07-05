@@ -83,13 +83,17 @@ on the wires.
 
 < elecSim.simple.wire.induction = 1.0 >
 
+The shot noise from the wire.  This is Gaussian.
+
+< elecSim.simple.wire.noise = 10 >
+
 The electronics noise quoted in electron equivalent noise.  This parameter
 controls the part of that noise that comes before the amplifier shaping.
 This is the thermal noise from the wires.  The initial value is 650 e- per
 microsecond taken from IEEE Trans. on Nuc Sci Vol. 58 no. 5, 2011
 "Front-End ASIC for a Liquid Argon TPC".
 
-< elecSim.simple.wire.noise = 650 >
+< elecSim.simple.spectral.noise = 650 >
 
 The amplifier shape peaking time.
 
@@ -141,11 +145,11 @@ The PMT digitizer time step
 
 The digitization noise that is not affected by the pulse shaping.  This
 noise is given ADC counts.  It is inserted into the signal between the
-pulse shaping and the amplification.  This should be tuned to the measured
-noise.  Note that this is random sample to sample noise, and is not the
-same as the raw RMS as calculated against the channel.  The raw RMS
-contains the "fixed frequency" noise that can be filtered.  The random
-noise is Gaussian so it's at all frequencies.
+pulse shaping and the amplification to account for the back-end electronic
+noise.  This should be tuned to the measured noise.  Note that this is
+random sample to sample noise, and is not the same as the raw RMS as
+calculated against the channel.  Thisrandom noise is Gaussian so it's at
+all frequencies.
 
 < elecSim.simple.digitization.noise = 0.3 >
 

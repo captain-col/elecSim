@@ -237,10 +237,13 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.light.longTime");
 
-    // The wire noise level.
     fWireNoise
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.wire.noise");
+
+    fSpectralNoise
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.spectral.noise");
 
     // The normalization factor for the charge induced on a wire.
     fWireInductionFactor
@@ -348,7 +351,8 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
 
     RealVector collectedCharge(chargeBins);
     RealVector shapedCharge(chargeBins);
-
+    ComplexVector backgroundSpectrum(chargeBins);
+    
     // For each wire in the detector, figure out the signal.  The loop is done
     // this way so that we don't need to know how many planes and wires are
     // being simulated.
@@ -377,7 +381,9 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
                                         contrib,info);
             if (charge<10) continue;
             AddWireNoise(channel,collectedCharge);
-            ShapeCharge(channel,collectedCharge,shapedCharge);
+            GenerateBackgroundSpectrum(channel,backgroundSpectrum);
+            ShapeCharge(channel,collectedCharge,backgroundSpectrum,
+                        shapedCharge);
             DigitizeWire(event,channel,shapedCharge,triggerTimes,
                          contrib,info);
 
@@ -621,7 +627,7 @@ void CP::TElecSimple::LightSignal(
     for (CP::TDataVector::iterator h = truthHits->begin();
          h != truthHits->end();
          ++h) {
-        CP::THandle<CP::TG4HitContainer> g4Hits =
+       CP::THandle<CP::TG4HitContainer> g4Hits =
             (*h)->Get<CP::TG4HitContainer>(".");
         for (CP::TG4HitContainer::const_iterator h = g4Hits->begin();
              h != g4Hits->end();
@@ -762,7 +768,7 @@ void CP::TElecSimple::DigitizeLight(
 
     std::size_t pmtBins = (fStopSimulation-fStartSimulation)/fPMTStep;
     
-    static RealVector shapedCharge;
+    RealVector shapedCharge;
     if (shapedCharge.size() < pmtBins) {
         shapedCharge.resize(pmtBins);
     }
@@ -890,36 +896,48 @@ void CP::TElecSimple::DigitizeLight(
 
 }
 
-namespace {
-    // Calculating the induced current on the wire needs the potential if the
-    // wire was held at 1*unit::volt and everything else was grounded, as well
-    // as the electron velocity as a function of position.  That's a fairly
-    // complicated calculation.  It's simplified to assume that the electron
-    // travels in a straight line with an impact parameter of corrected
-    // distance, and at constant velocity.  The potential is simplified to be
-    // 1/r - 1/r_max where rmax is the distance to the wire as the electron
-    // passes the grid plane.  This estimates the shape of
-    // (velocity)*(electric field), and is normalized to so that the integral
-    // from 0.0 to gDist is 1.0.  Notice the sign is set so that this starts
-    // out positive (so that it matchs the behavior of the electronics).
-    double InducedShape(double dist, double impact) {
-        // Distance from wire plane to grid.
-        double gDist = 3.18*unit::mm;
-        if (std::abs(dist) > gDist) return 0.0;
-        // Magnitude of the electric field at a dist from the wire plane.
-        double field = 1.0/std::sqrt(dist*dist + impact*impact)
-            - 1.0/std::sqrt(gDist*gDist + impact*impact);
-        // cosine of the angle between the velocity and the field vector
-        double cosV = dist/sqrt(dist*dist + impact*impact);
-        double current = - cosV*field;
-        // Calculate the normalization (explicitly integrated)
-        double a = sqrt(gDist*gDist+impact*impact);
-        double b = std::log(gDist*gDist+impact*impact)
-            -2.0*(std::log(impact)+1.0);
-        double norm = 0.5*(a*b+2.0*impact)/a;
-        return current/norm;
+// Calculating the induced current on the wire needs the potential if the
+// wire was held at 1*unit::volt and everything else was grounded, as well
+// as the electron velocity as a function of position.  That's a fairly
+// complicated calculation.  It's simplified to assume that the electron
+// travels in a straight line with an impact parameter of corrected
+// distance, and at constant velocity.  The potential is simplified to be
+// 1/r - 1/r_max where rmax is the distance to the wire as the electron
+// passes the grid plane.  This estimates the shape of
+// (velocity)*(electric field), and is normalized to so that the integral
+// from 0.0 to gDist is 1.0.  Notice the sign is set so that this starts
+// out positive (so that it matchs the behavior of the electronics).
+double CP::TElecSimple::InducedShape(double dist, double impact) {
+    // Distance from wire plane to grid.
+    double gDist = 3.18*unit::mm;
+    if (std::abs(dist) > gDist) return 0.0;
+    // Magnitude of the electric field at a dist from the wire plane.
+    double field = 1.0/std::sqrt(dist*dist + impact*impact)
+        - 1.0/std::sqrt(gDist*gDist + impact*impact);
+    // cosine of the angle between the velocity and the field vector
+    double cosV = dist/sqrt(dist*dist + impact*impact);
+    double current = - cosV*field;
+    // Calculate the normalization (explicitly integrated)
+    double a = sqrt(gDist*gDist+impact*impact);
+    double b = std::log(gDist*gDist+impact*impact)
+        -2.0*(std::log(impact)+1.0);
+    double norm = 0.5*(a*b+2.0*impact)/a;
+    return current/norm;
+}
+
+double CP::TElecSimple::PulseShaping(double tSample, double window,
+                                     int samples) {
+    double val = 0.0;
+    double step = 1.0/samples;
+    for (double t = tSample; t<tSample+window; t += step*window) {
+        if (t<0.0) continue;
+        double x = t/fAmplifierRise;
+        if (x < 1.0) x = std::pow(x,fAmplifierRiseShape);
+        else x = std::pow(x,fAmplifierFallShape);
+        val += (x<40) ? x*std::exp(-x): 0.0;
     }
-};
+    return val;
+}
 
 /// The charge induced in a time bin by single electron interacting with a
 /// wire.  This is just the current times the bin size.  For the collection
@@ -1236,22 +1254,39 @@ void CP::TElecSimple::AddWireNoise(CP::TMCChannelId channel,
     }
 }
 
-double CP::TElecSimple::PulseShaping(double tSample, double window,
-                                     int samples) {
-    double val = 0.0;
-    double step = 1.0/samples;
-    for (double t = tSample; t<tSample+window; t += step*window) {
-        if (t<0.0) continue;
-        double x = t/fAmplifierRise;
-        if (x < 1.0) x = std::pow(x,fAmplifierRiseShape);
-        else x = std::pow(x,fAmplifierFallShape);
-        val += (x<40) ? x*std::exp(-x): 0.0;
+namespace {
+    double backgroundContinuum(double bin) {
+        bin=bin/3000.0;
+        return bin*std::exp(-bin)*std::exp(1.0);
     }
-    return val;
+    
+}
+
+void CP::TElecSimple::GenerateBackgroundSpectrum(CP::TMCChannelId channel,
+                                                 ComplexVector& out) {
+    std::fill(out.begin(),out.end(),std::complex<double>(0,0));
+
+    double power = 0.0;
+    for (std::size_t i=0; i<out.size(); ++i) {
+        double mag;
+        do {
+            mag = backgroundContinuum(1.0*i);
+            mag += 0.1*mag*gRandom->Gaus();
+        } while (mag<0.0);
+        double phase = gRandom->Uniform(0.0,2.0*unit::pi);
+        out[i] = std::polar(mag,phase);
+        power += mag*mag;
+    }
+    power = fSpectralNoise*fSpectralNoise/out.size()/power;
+    power /= out.size();
+    for (ComplexVector::iterator c = out.begin(); c != out.end(); ++c) {
+        *c /= power;
+    }
 }
 
 void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
                                   const RealVector& in,
+                                  const ComplexVector& bkg,
                                   RealVector& out) {
     if (out.size() != in.size()) {
         CaptError("Output vector does not match input size.");
@@ -1340,6 +1375,12 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
 
     }
 
+    if (fResponseFFT.size() != bkg.size()) {
+        CaptError("Invalid length for background spectrum");
+        CaptError("     expected length: " << fResponseFFT.size());
+        CaptError("     background length: " << bkg.size());
+    }
+
     // Take the FFT of the input.
     for (std::size_t i = 0; i<in.size(); ++i) {
         double val = in[i];
@@ -1347,15 +1388,17 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
     }
     fFFT->Transform();
 
-    // Take the convolution in frequency space.
+    // Add the background spectrum and take the convolution in frequency
+    // space.
     for (std::size_t i=0; i<in.size(); ++i) {
         double rl, im;
         fFFT->GetPointComplex(i,rl,im);
         std::complex<double> v(rl,im);
-        v *= norm*fResponseFFT[i];
+        v *= norm;
+        v += bkg[i];
+        v *= fResponseFFT[i];
         fInvertFFT->SetPoint(i,v.real(),v.imag());
     }
-
 
 #ifdef FILL_HISTOGRAM
 #undef FILL_HISTOGRAM
@@ -1379,8 +1422,7 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
     for (std::size_t i=0; i<out.size(); ++i) {
         out[i] = norm*fInvertFFT->GetPointReal(i);
     }
-
-
+    
 }
 
 void CP::TElecSimple::DigitizeWire(
