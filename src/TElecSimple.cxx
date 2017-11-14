@@ -223,7 +223,7 @@ CP::TElecSimple::TElecSimple() {
             "elecSim.simple.light.collection");
 
     fPMTDarkCurrent = CP::TRuntimeParameters::Get().GetParameterD(
-            "elecSim.simple.light.darkCurrent");
+        "elecSim.simple.light.darkCurrent");
 
     fShortFraction
         = CP::TRuntimeParameters::Get().GetParameterD(
@@ -320,9 +320,9 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
          triggerTime != triggerTimes.end();
          ++triggerTime) {
         fStartSimulation = std::min(fStartSimulation,
-                                     *triggerTime - fPreTriggerTime);
+                                    *triggerTime - fPreTriggerTime);
         fStopSimulation = std::max(fStopSimulation,
-                                    *triggerTime + fPostTriggerTime);
+                                   *triggerTime + fPostTriggerTime);
     }
 
     // Simulate the PMT signals.
@@ -380,6 +380,7 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
             double charge = DriftCharge(event,channel,collectedCharge,
                                         contrib,info);
             if (charge<10) continue;
+
             AddWireNoise(channel,collectedCharge);
             GenerateBackgroundSpectrum(channel,backgroundSpectrum);
             ShapeCharge(channel,collectedCharge,backgroundSpectrum,
@@ -403,6 +404,39 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
 
 #ifdef FILL_HISTOGRAM
 #undef FILL_HISTOGRAM
+            TH1F* shapedHist
+                = new TH1F((channel.AsString()+"-shaped").c_str(),
+                           ("Shaped charge for " + channel.AsString()).c_str(),
+                           shapedCharge.size(),
+                           0.0, timeStep*shapedCharge.size());
+            for (std::size_t i = 0; i<shapedCharge.size(); ++i) {
+                shapedHist->SetBinContent(i+1,shapedCharge[i]);
+            }
+#endif
+
+#ifdef FILL_HISTOGRAM
+#undef FILL_HISTOGRAM
+            {
+                double maxVal = 0.0;
+                for (std::size_t i = 0; i<shapedCharge.size(); ++i) {
+                    maxVal = std::max(maxVal,std::abs(shapedCharge[i]));
+                }
+                int maxBins = maxVal + 1;
+                TH1F* noiseHist
+                    = new TH1F((channel.AsString()+"-noise").c_str(),
+                               ("Charge RMS for " + channel.AsString()).c_str(),
+                               maxBins, -maxVal, maxVal);
+                for (std::size_t i = 0; i<shapedCharge.size(); ++i) {
+                    noiseHist->Fill(shapedCharge[i]);
+                }
+            }
+#endif
+            
+        }
+    }
+
+#ifdef FILL_HISTOGRAM
+#undef FILL_HISTOGRAM
             int binStride = fDigitStep/timeStep + 0.5;
             TH1F* binnedHist
                 = new TH1F((channel.AsString()+"-binned").c_str(),
@@ -419,21 +453,6 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
             }
             binnedHist->SetBinContent(1,charge);
 #endif
-
-#ifdef FILL_HISTOGRAM
-#undef FILL_HISTOGRAM
-            TH1F* shapedHist
-                = new TH1F((channel.AsString()+"-shaped").c_str(),
-                           ("Shaped charge for " + channel.AsString()).c_str(),
-                           shapedCharge.size(),
-                           0.0, timeStep*shapedCharge.size());
-            for (std::size_t i = 0; i<shapedCharge.size(); ++i) {
-                shapedHist->SetBinContent(i+1,shapedCharge[i]);
-            }
-#endif
-
-        }
-    }
 
     return;
 }
@@ -627,7 +646,7 @@ void CP::TElecSimple::LightSignal(
     for (CP::TDataVector::iterator h = truthHits->begin();
          h != truthHits->end();
          ++h) {
-       CP::THandle<CP::TG4HitContainer> g4Hits =
+        CP::THandle<CP::TG4HitContainer> g4Hits =
             (*h)->Get<CP::TG4HitContainer>(".");
         for (CP::TG4HitContainer::const_iterator h = g4Hits->begin();
              h != g4Hits->end();
@@ -1255,9 +1274,9 @@ void CP::TElecSimple::AddWireNoise(CP::TMCChannelId channel,
 }
 
 namespace {
-    double backgroundContinuum(double bin) {
-        bin=bin/3000.0;
-        return bin*std::exp(-bin)*std::exp(1.0);
+    double backgroundContinuum(int bin) {
+        double arg=1.0*bin/3000.0;
+        return arg*std::exp(-arg)*std::exp(1.0);
     }
     
 }
@@ -1270,7 +1289,7 @@ void CP::TElecSimple::GenerateBackgroundSpectrum(CP::TMCChannelId channel,
     for (std::size_t i=0; i<out.size(); ++i) {
         double mag;
         do {
-            mag = backgroundContinuum(1.0*i);
+            mag = backgroundContinuum(i);
             mag += 0.1*mag*gRandom->Gaus();
         } while (mag<0.0);
         double phase = gRandom->Uniform(0.0,2.0*unit::pi);
@@ -1278,7 +1297,6 @@ void CP::TElecSimple::GenerateBackgroundSpectrum(CP::TMCChannelId channel,
         power += mag*mag;
     }
     power = fSpectralNoise*fSpectralNoise/out.size()/power;
-    power /= out.size();
     for (ComplexVector::iterator c = out.begin(); c != out.end(); ++c) {
         *c /= power;
     }
@@ -1365,9 +1383,9 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
 #ifdef FILL_HISTOGRAM
 #undef FILL_HISTOGRAM
         TH1F* elecFFT = new TH1F("elecFFT",
-                                  "Electronics Response FFT",
-                                  100,
-                                  0.0, 100.0);
+                                 "Electronics Response FFT",
+                                 100,
+                                 0.0, 100.0);
         for (int i = 0; i<100; ++i) {
             elecFFT->SetBinContent(i+1, std::abs(fResponseFFT[i]));
         }
@@ -1505,7 +1523,7 @@ void CP::TElecSimple::DigitizeWire(
                 int ival = val+0.5;
                 ival = std::max(fDigitMinimum,std::min(ival,fDigitMaximum));
                 if (ival<1) {
-                    CaptError("Sample underflow " << adc.size() << " " << ival);
+                    CaptWarn("Sample underflow " << adc.size() << " " << ival);
                     ival = 1;
                 }
                 else if (ival>4095) {
