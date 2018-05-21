@@ -403,6 +403,19 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
 
 #ifdef FILL_HISTOGRAM
 #undef FILL_HISTOGRAM
+            static TH1F* noiseHist = nullptr;
+            if (!noiseHist) {
+                noiseHist = new TH1F("overallNoise",
+                                     "Charge per sample",
+                                     100, -2000.0, 2000.0);
+            }
+            for (std::size_t i = 0; i<shapedCharge.size(); ++i) {
+                noiseHist->Fill(shapedCharge[i]);
+            }
+#endif
+
+#ifdef FILL_HISTOGRAM
+#undef FILL_HISTOGRAM
             TH1F* collectedHist
                 = new TH1F((channel.AsString()+"-collected").c_str(),
                            ("Collected charge for "
@@ -1299,6 +1312,7 @@ void CP::TElecSimple::GenerateBackgroundSpectrum(CP::TMCChannelId channel,
         *i = std::complex<double>(gRandom->Gaus(),gRandom->Gaus());
     }
 
+#ifdef NO_SCULPT
     // Sculpt the power spectrum.
     for (std::size_t i=0; i<out.size(); ++i) {
         double freq = deltaFreq*i;
@@ -1314,13 +1328,20 @@ void CP::TElecSimple::GenerateBackgroundSpectrum(CP::TMCChannelId channel,
         }
         out[i] *= mag;
     }
+#endif
+
+    // Collect all the magic factors of pi, 2 and sqrt(2) into one spot.  The
+    // fResponseFFT is not normalized, so this is fixing (trying to fix) all
+    // of the factors that are missing in other places in the code (this is
+    // the only place that depends on the absolute normalization of the FFTs).
+    const double normConst = 3.1416*3.1416*3.1416*3.1416/(4.0*1.4142);
 
     // Fix the normalization.
     double norm = 0.0;
     for (std::size_t i=0; i<out.size(); ++i) {
         norm += std::abs(out[i]*fResponseFFT[i]);
     }
-    norm = fSpectralNoise*fSpectralNoise/norm;
+    norm = normConst*fSpectralNoise*fSpectralNoise/norm;
     for (ComplexVector::iterator c = out.begin(); c != out.end(); ++c) {
         *c *= norm;
     }
