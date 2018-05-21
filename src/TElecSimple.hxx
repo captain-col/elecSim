@@ -64,10 +64,21 @@ private:
     double fWireNoise;
 
     /// The spectral noise RMS.  This is the noise that has a specific
-    /// spectral depencence.  The RMS is sqrt(sum(power_i)), where power_i is
-    /// the power in each frequency bin.
+    /// spectral dependence.  This is the noise associated with the
+    /// amplifier/shaper.  The nominal value is 650 pe after shaping.
     double fSpectralNoise;
 
+    /// The power value for the f^(-alpha) spectrum of the pink noise.
+    double fSpectralAlpha;
+    
+    /// The low cut off for the pink noise.  It is specified in Hertz.  Below
+    /// this index white noise is used.
+    double fSpectralLowCut;
+
+    /// The high cut off for the pink noise.  It is specified Hertz.  Above
+    /// this index white noise is used.
+    double fSpectralHighCut;
+    
     /// The charge induction factor for the induction wires.  This is assumed
     /// to be the same for the U and V planes since they have similar
     /// electrical properties.  A factor of 1.0 means that an average charge
@@ -260,6 +271,11 @@ private:
     /// loops (etc).
     void GenerateBackgroundSpectrum(CP::TMCChannelId channel,
                                     ComplexVector& out);
+    
+
+    /// Generate the FFT of the electronics response.  This fills the
+    /// necessary vectors for use later.
+    void GenerateResponseFFT(std::size_t samples);
     
     /// Fill a vector with the shaped values for the charge.
     void ShapeCharge(CP::TMCChannelId channel,

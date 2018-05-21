@@ -85,7 +85,10 @@ on the wires.
 
 < elecSim.simple.wire.induction = 1.0 >
 
-The shot noise from the wire.  This is Gaussian.
+The RMS Johnson-Nyquist noise (in electrons) from the wire.  This modeled
+white noise using a Gaussian with this RMS for each time sample.  I haven't
+done the actual calculation, and this is probably an overestimate, but is
+already very small compared to the amplifier (spectral) noise.
 
 < elecSim.simple.wire.noise = 10 >
 
@@ -96,6 +99,24 @@ microsecond taken from IEEE Trans. on Nuc Sci Vol. 58 no. 5, 2011
 "Front-End ASIC for a Liquid Argon TPC".
 
 < elecSim.simple.spectral.noise = 650 >
+
+The noise is modeled using f^(-alpha) (i.e. pink noise).  This specifies
+the index of the noise.  The nominal value would is 1.0, but it should be
+tuned to match the date.
+
+< elecSim.simple.spectral.alpha = 1.0 >
+
+Frequencies below the low cut will be modeled as having white noise.  This
+limits the amount of noise in the very lowest frequency bins.
+
+< elecSim.simple.spectral.lowCut = 1 kHz >
+
+Bins above the high cut will be modeled as having white noise.  This is
+used to specify the transition between a pink noise model of the
+electronics to the white noise that is expected above the cutoff of the
+electronics.
+
+< elecSim.simple.spectral.highCut = 2 MHz >
 
 The amplifier shape peaking time.
 
@@ -150,7 +171,7 @@ noise is given ADC counts.  It is inserted into the signal between the
 pulse shaping and the amplification to account for the back-end electronic
 noise.  This should be tuned to the measured noise.  Note that this is
 random sample to sample noise, and is not the same as the raw RMS as
-calculated against the channel.  Thisrandom noise is Gaussian so it's at
+calculated against the channel.  This random noise is Gaussian so it's at
 all frequencies.
 
 < elecSim.simple.digitization.noise = 0.3 >

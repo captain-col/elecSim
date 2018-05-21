@@ -245,6 +245,18 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.spectral.noise");
 
+    fSpectralAlpha
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.spectral.alpha");
+    
+    fSpectralLowCut
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.spectral.lowCut");
+    
+    fSpectralHighCut
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.spectral.highCut");
+    
     // The normalization factor for the charge induced on a wire.
     fWireInductionFactor
         = CP::TRuntimeParameters::Get().GetParameterD(
@@ -352,7 +364,8 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
     RealVector collectedCharge(chargeBins);
     RealVector shapedCharge(chargeBins);
     ComplexVector backgroundSpectrum(chargeBins);
-    
+    GenerateResponseFFT(chargeBins);
+
     // For each wire in the detector, figure out the signal.  The loop is done
     // this way so that we don't need to know how many planes and wires are
     // being simulated.
@@ -1265,86 +1278,94 @@ void CP::TElecSimple::AddWireNoise(CP::TMCChannelId channel,
     double sampleNoise = fWireNoise*std::sqrt(timeStep/(1000.0*unit::ns));
 
     for (RealVector::iterator o = out.begin(); o != out.end(); ++o) {
-        double v;
-        do {
-            v = gRandom->Gaus(0,sampleNoise);
-        } while (std::abs(v) > 2.5*sampleNoise) ;
-        (*o) += v;
+        (*o) += gRandom->Gaus(0,sampleNoise);
     }
-}
-
-namespace {
-    double backgroundContinuum(int bin) {
-        double arg=1.0*bin/3000.0;
-        return arg*std::exp(-arg)*std::exp(1.0);
-    }
-    
 }
 
 void CP::TElecSimple::GenerateBackgroundSpectrum(CP::TMCChannelId channel,
                                                  ComplexVector& out) {
-    std::fill(out.begin(),out.end(),std::complex<double>(0,0));
+    // The sample size.
+    double timeStep = (fStopSimulation-fStartSimulation)/out.size();
 
-    double power = 0.0;
+    // The nyquist frequency in hertz
+    double nyquistFreq = (0.5/timeStep);
+
+    // The frequency step per bin.
+    double deltaFreq = 2.0*nyquistFreq/out.size();
+
+    // Generate Gaussian noise.  This will be "sculpted" to have the right
+    // power spectrum.
+    for (ComplexVector::iterator i = out.begin(); i != out.end(); ++i) {
+        *i = std::complex<double>(gRandom->Gaus(),gRandom->Gaus());
+    }
+
+    // Sculpt the power spectrum.
     for (std::size_t i=0; i<out.size(); ++i) {
-        double mag;
-        do {
-            mag = backgroundContinuum(i);
-            mag += 0.1*mag*gRandom->Gaus();
-        } while (mag<0.0);
-        double phase = gRandom->Uniform(0.0,2.0*unit::pi);
-        out[i] = std::polar(mag,phase);
-        power += mag*mag;
+        double freq = deltaFreq*i;
+        double mag = 1.0;
+        if (freq < fSpectralLowCut) {
+            mag = std::pow(fSpectralLowCut,-fSpectralAlpha);
+        }
+        else if (freq > fSpectralHighCut) {
+            mag = std::pow(fSpectralHighCut,-fSpectralAlpha);
+        }
+        else {
+            mag = std::pow(freq,-fSpectralAlpha);
+        }
+        out[i] *= mag;
     }
-    power = fSpectralNoise*fSpectralNoise/out.size()/power;
+
+    // Fix the normalization.
+    double norm = 0.0;
+    for (std::size_t i=0; i<out.size(); ++i) {
+        norm += std::abs(out[i]*fResponseFFT[i]);
+    }
+    norm = fSpectralNoise*fSpectralNoise/norm;
     for (ComplexVector::iterator c = out.begin(); c != out.end(); ++c) {
-        *c /= power;
+        *c *= norm;
     }
+
+#ifdef FILL_HISTOGRAM
+#undef FILL_HISTOGRAM
+        TH1F* noiseFFT = new TH1F("noiseFFT",
+                                 "Noise FFT",
+                                 out.size(),
+                                 0.0, out.size());
+        for (int i = 0; i<out.size(); ++i) {
+            noiseFFT->SetBinContent(i+1, std::abs(out[i]));
+        }
+#endif
+
 }
 
-void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
-                                  const RealVector& in,
-                                  const ComplexVector& bkg,
-                                  RealVector& out) {
-    if (out.size() != in.size()) {
-        CaptError("Output vector does not match input size.");
-        out.resize(in.size());
-    }
-
+void CP::TElecSimple::GenerateResponseFFT(std::size_t samples) {
     // Find out the time step per simulated sample.
-    double timeStep = (fStopSimulation-fStartSimulation)/in.size();
-
-    for (RealVector::iterator t = out.begin(); t != out.end(); ++t) {
-        *t = 0;
-    }
-
-    // The normalization factor per transform;
-    double norm = 1.0/std::sqrt(1.0*in.size());
+    double timeStep = (fStopSimulation-fStartSimulation)/samples;
 
     // Take the FFT of the response model.  This will allocate new FFTs if
     // it's required.
-    if (in.size() != fResponseFFT.size()) {
+    if (samples != fResponseFFT.size()) {
         CaptLog("Initialize the FFT for convolutions");
-        int len = in.size();
+        int len = samples;
         if (fFFT) delete fFFT;
         fFFT = TVirtualFFT::FFT(1,&len,"R2C K M");
-        if (len != (int) in.size()) {
+        if (len != (int) samples) {
             CaptError("Invalid length for FFT");
-            CaptError("     original length: " << in.size());
+            CaptError("     original length: " << samples);
             CaptError("     allocated length: " << len);
         }
-        len = in.size();  // reinitialize in case the length changed.
+        len = samples;  // reinitialize in case the length changed.
         if (fInvertFFT) delete fInvertFFT;
         CaptLog("Initialize the Inverted FFT for convolutions");
         fInvertFFT = TVirtualFFT::FFT(1,&len,"C2R K M");
-        if (len != (int) in.size()) {
+        if (len != (int) samples) {
             CaptError("Invalid length for inverse FFT");
-            CaptError("     original length: " << in.size());
+            CaptError("     original length: " << samples);
             CaptError("     allocated length: " << len);
         }
         CaptLog("FFT initialized with " << len << " elements");
         CaptLog("Create the response FFT");
-        fResponseFFT.resize(in.size());
+        fResponseFFT.resize(samples);
         // Find the normalization for the response
         double responseNorm = 0.0;
         for (int i = 0; i<len; ++i) {
@@ -1361,6 +1382,7 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
             double val = PulseShaping(i*timeStep, timeStep);
             fFFT->SetPoint(i,val/responseNorm);
         }
+
 #ifdef FILL_HISTOGRAM
 #undef FILL_HISTOGRAM
         TH1F* elecResp = new TH1F("elecResp",
@@ -1372,6 +1394,7 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
             elecResp->SetBinContent(i+1, std::abs(val)/responseNorm);
         }
 #endif
+
         // Take the transform and save it for later.
         fFFT->Transform();
         for (int i = 0; i<len; ++i) {
@@ -1392,6 +1415,24 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
 #endif
 
     }
+}
+
+
+void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
+                                  const RealVector& in,
+                                  const ComplexVector& bkg,
+                                  RealVector& out) {
+    if (out.size() != in.size()) {
+        CaptError("Output vector does not match input size.");
+        out.resize(in.size());
+    }
+
+    for (RealVector::iterator t = out.begin(); t != out.end(); ++t) {
+        *t = 0;
+    }
+
+    // The normalization factor per transform;
+    double norm = 1.0/std::sqrt(1.0*in.size());
 
     if (fResponseFFT.size() != bkg.size()) {
         CaptError("Invalid length for background spectrum");
