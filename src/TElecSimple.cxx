@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <numeric>
 #include <memory>
+#include <iostream>
 
 CP::TElecSimple::TElecSimple() {
     CaptLog("Starting the electronics simulation");
@@ -392,7 +393,6 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
             // eV of deposited energy).
             double charge = DriftCharge(event,channel,collectedCharge,
                                         contrib,info);
-            if (charge<10) continue;
 
             AddWireNoise(channel,collectedCharge);
             GenerateBackgroundSpectrum(channel,backgroundSpectrum);
@@ -1298,11 +1298,15 @@ void CP::TElecSimple::GenerateBackgroundSpectrum(CP::TMCChannelId channel,
     for (ComplexVector::iterator i = out.begin(); i != out.end(); ++i) {
         *i = std::complex<double>(gRandom->Gaus(),gRandom->Gaus());
     }
-
+    out[0] = 0.0;
+    
     // Sculpt the power spectrum.
     for (std::size_t i=0; i<out.size(); ++i) {
         double freq = deltaFreq*i;
         double mag = 1.0;
+        if (freq > nyquistFreq) {
+            freq = nyquistFreq - freq;
+        }
         if (freq < fSpectralLowCut) {
             mag = std::pow(fSpectralLowCut,-fSpectralAlpha);
         }
@@ -1316,25 +1320,22 @@ void CP::TElecSimple::GenerateBackgroundSpectrum(CP::TMCChannelId channel,
     }
 
     // Fix the normalization.
-    double norm = 0.0;
+    double aNorm = 0.0;
     for (std::size_t i=0; i<out.size(); ++i) {
-        norm += std::abs(out[i]*fResponseFFT[i]);
+        aNorm += std::abs(out[i]*fResponseFFT[i]);
     }
-    norm = fSpectralNoise*fSpectralNoise/norm;
+
+    // Collect any the magic factors of pi, 2 and sqrt(2) into one spot.  The
+    // fResponseFFT is not normalized, so this is fixing (trying to fix) all
+    // of the factors that are missing in other places in the code (this is
+    // the only place that depends on the absolute normalization of the FFTs).
+    double norm = 1.0;
+    norm *= fDigitOversample*fDigitOversample;
+    norm *= fSpectralNoise*fSpectralNoise;
+    norm /= aNorm;
     for (ComplexVector::iterator c = out.begin(); c != out.end(); ++c) {
         *c *= norm;
     }
-
-#ifdef FILL_HISTOGRAM
-#undef FILL_HISTOGRAM
-        TH1F* noiseFFT = new TH1F("noiseFFT",
-                                 "Noise FFT",
-                                 out.size(),
-                                 0.0, out.size());
-        for (int i = 0; i<out.size(); ++i) {
-            noiseFFT->SetBinContent(i+1, std::abs(out[i]));
-        }
-#endif
 
 }
 
@@ -1450,31 +1451,14 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
     // Add the background spectrum and take the convolution in frequency
     // space.
     for (std::size_t i=0; i<in.size(); ++i) {
+        std::complex<double> v(0,0);
         double rl, im;
         fFFT->GetPointComplex(i,rl,im);
-        std::complex<double> v(rl,im);
-        v *= norm;
-        v += bkg[i];
+        v += norm*std::complex<double>(rl,im);
         v *= fResponseFFT[i];
+        v += bkg[i];
         fInvertFFT->SetPoint(i,v.real(),v.imag());
     }
-
-#ifdef FILL_HISTOGRAM
-#undef FILL_HISTOGRAM
-    TH1F* shapeFFT
-        = new TH1F((channel.AsString()+"-fft").c_str(),
-                   ("FFT of shaped signal "
-                    + channel.AsString()).c_str(),
-                   in.size(),
-                   0.0, in.size());
-    for (std::size_t i = 0; i<in.size(); ++i) {
-        double rl, im;
-        fFFT->GetPointComplex(i,rl,im);
-        std::complex<double> v(rl,im);
-        v *= norm*fResponseFFT[i];
-        shapeFFT->SetBinContent(i+1,std::abs(v));
-    }
-#endif
 
     // Transform back to time space.
     fInvertFFT->Transform();
