@@ -92,45 +92,57 @@ already very small compared to the amplifier (spectral) noise.
 
 < elecSim.simple.wire.noise = 0.001 >
 
-The electronics noise quoted in electron equivalent noise.  This parameter
-controls the part of that noise that comes before the amplifier shaping.
-This is the thermal noise from the wires.  The initial value is 650 e- per
-microsecond taken from IEEE Trans. on Nuc Sci Vol. 58 no. 5, 2011
-"Front-End ASIC for a Liquid Argon TPC".
+This parameter controls the part of that noise that comes after the
+amplifier shaping.  This should be fitted to the measured noise spectrum
+from the wires, and is approximately the power at the highest point in the
+spectrum.  There is a published value of 650 e- per microsecond taken from
+IEEE Trans. on Nuc Sci Vol. 58 no. 5, 2011 "Front-End ASIC for a Liquid
+Argon TPC", but that value is easily related to this tuning parameter.
 
-< elecSim.simple.spectral.noise = 650 >
+< elecSim.simple.spectral.noise = 500 >
 
 The noise is modeled using f^(-alpha) (i.e. pink noise).  This specifies
-the index of the noise.  The nominal value would is 1.0, but it should be
-tuned to match the date.
+the index of the noise.  The classical pink noise would be is 1.0, but it
+should be tuned to match the data.  The model is valid for alpha between
+zero and two.
 
-< elecSim.simple.spectral.alpha = 1.0 >
+< elecSim.simple.spectral.alpha = 1.80 >
 
 Frequencies below the low cut will be modeled as having white noise.  This
 limits the amount of noise in the very lowest frequency bins.
 
-< elecSim.simple.spectral.lowCut = 1 kHz >
+< elecSim.simple.spectral.lowCut = 200 Hz >
 
 Bins above the high cut will be modeled as having white noise.  This is
 used to specify the transition between a pink noise model of the
 electronics to the white noise that is expected above the cutoff of the
 electronics.
 
-< elecSim.simple.spectral.highCut = 2 MHz >
+< elecSim.simple.spectral.highCut = 70000 Hz >
+
+Describe the impedence that is filtering the spectral noise.
+
+< elecSim.simple.spectral.impedance.resistance = 0.0 >
+< elecSim.simple.spectral.impedance.inductor.resistance = 0.0 >
+< elecSim.simple.spectral.impedance.inductor.frequency = 300 kHz >
+< elecSim.simple.spectral.impedance.inductor.auxPower = 1.3 >
+< elecSim.simple.spectral.impedance.capacitor.frequency = 350 kHz >
+< elecSim.simple.spectral.impedance.capacitor.resistance = 0.0 >
+< elecSim.simple.spectral.impedance.capacitor.auxPower = 1.6 >
 
 The amplifier shape peaking time.
 
-< elecSim.simple.amplifier.riseTime = 1000 ns >
+< elecSim.simple.amplifier.riseTime = 990 ns >
 
 Control the shape of the leading edge of the pulse.  The nominal value
 seems to be between 1.0 and 2.0 (based on the observed electronics shape).
 
-< elecSim.simple.amplifier.riseShape = 2.0 >
+< elecSim.simple.amplifier.riseShape = 1.5 >
 
 Control the shape of the leading edge of the pulse.  The nominal value
 seems to be about 2.0 (based on the observed electronics shape).
 
-< elecSim.simple.amplifier.fallShape = 2.0 >
+< elecSim.simple.amplifier.fallShape = 1.8 >
 
 Flag for if the shaper is conserving the pulse height or the pulse area.
 If this is true, the integral is conserved, otherwise the height is

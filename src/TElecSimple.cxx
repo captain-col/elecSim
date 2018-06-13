@@ -258,6 +258,34 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.spectral.highCut");
     
+    fSpectralResist
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.spectral.impedance.resistance");
+
+    fSpectralIndFreq
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.spectral.impedance.inductor.frequency");
+
+    fSpectralIndRes
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.spectral.impedance.inductor.resistance");
+
+    fSpectralIndPow
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.spectral.impedance.inductor.auxPower");
+
+    fSpectralCapFreq
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.spectral.impedance.capacitor.frequency");
+
+    fSpectralCapRes
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.spectral.impedance.capacitor.resistance");
+    
+    fSpectralCapPow
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.spectral.impedance.capacitor.auxPower");
+    
     // The normalization factor for the charge induced on a wire.
     fWireInductionFactor
         = CP::TRuntimeParameters::Get().GetParameterD(
@@ -834,7 +862,8 @@ void CP::TElecSimple::DigitizeLight(
         }
     }
     
-    double pedestal = fDigitPedestal + gRandom->Uniform(-0.5,0.5);
+    // double pedestal = fDigitPedestal + gRandom->Uniform(-0.5,0.5);
+    double pedestal = fDigitPedestal + 0.5;
 
     for (RealVector::const_iterator trigger = triggers.begin();
          trigger != triggers.end(); ++trigger) {
@@ -1282,6 +1311,77 @@ void CP::TElecSimple::AddWireNoise(CP::TMCChannelId channel,
     }
 }
 
+namespace {
+    double ColoredNoise(double freq,
+                        double lowCut,
+                        double highCut,
+                        double alpha) {
+        double mag = 1.0;
+        double lowMag = 1.0;
+        double highMag = 1.0;
+        freq = std::abs(freq);
+        lowMag = std::pow(lowCut,-alpha);
+        highMag = std::pow(highCut,-alpha);
+        if (freq < lowCut) {
+            mag=lowMag/highMag;
+        }
+        else if (freq > highCut) {
+            mag = highMag/highMag;
+        }
+        else {
+            mag = std::pow(freq,-alpha)/highMag;
+        }
+        return mag;
+    }
+
+    /// Model the noise.  This started as a parallel rlc short for the noise,
+    /// but the form has been modified to allow data to be fit.  This returns
+    /// a value between 0.0 and 1.0 that is the equivalent to the RMS voltage
+    /// between T1 and T2 when driven by a unit current source (e.g. the
+    /// impedance between T1 and T2).
+    ///
+    ///      -------------------------T1
+    ///                |
+    ///                R
+    ///                |
+    ///           -----------
+    ///           |    |    |
+    ///           R'   L    C
+    ///           |    |    |
+    ///           |    r    r
+    ///           |    |    |
+    ///           -----------
+    ///                |
+    ///      -------------------------T2
+    ///
+    ///  All of the resistances can be different, and the inductance and
+    ///  capitance are specified in units of frequency.  For this to actually
+    ///  model the circuit show, indPow and capPow need to be 1.0.
+    double ShortingImpedance(double freq,
+                             double res,
+                             double indFreq,
+                             double indRes,
+                             double indPow,
+                             double capFreq,
+                             double capRes,
+                             double capPow) {
+        freq = std::abs(freq);
+        if (freq < 1.0*unit::hertz) freq = 1.0*unit::hertz;
+        // Find impedance of the parallel rlc.
+        double z = 1.0;
+        z = 1.0
+            /std::sqrt(
+                1.0
+                + std::pow(1.0/(indRes + std::pow(freq/indFreq,indPow))
+                           - 1.0/(capRes + std::pow(capFreq/freq,capPow)),2.0));
+        // Add in the series resistor
+        if (res > 1.0) res = 1.0;
+        if (res < 0.0) res = 0.0;
+        z = res + (1.0-res)*z;
+        return z;
+    }
+}
+
 void CP::TElecSimple::GenerateBackgroundSpectrum(CP::TMCChannelId channel,
                                                  ComplexVector& out) {
     // The sample size.
@@ -1295,44 +1395,47 @@ void CP::TElecSimple::GenerateBackgroundSpectrum(CP::TMCChannelId channel,
 
     // Generate Gaussian noise.  This will be "sculpted" to have the right
     // power spectrum.
-    for (ComplexVector::iterator i = out.begin(); i != out.end(); ++i) {
-        *i = std::complex<double>(gRandom->Gaus(),gRandom->Gaus());
+    for (int i=1; i<out.size()/2; ++i) {
+        out[i] = std::complex<double>(gRandom->Gaus(),gRandom->Gaus());
+        out[out.size()-i] = std::conj(out[i]);
     }
-    out[0] = 0.0;
+    out[0] = std::complex<double>(0.0,0.0);
+    out[out.size()/2] = std::complex<double>(0.0,0.0);
     
-    // Sculpt the power spectrum.
-    for (std::size_t i=0; i<out.size(); ++i) {
-        double freq = deltaFreq*i;
-        double mag = 1.0;
-        if (freq > nyquistFreq) {
-            freq = nyquistFreq - freq;
-        }
-        if (freq < fSpectralLowCut) {
-            mag = std::pow(fSpectralLowCut,-fSpectralAlpha);
-        }
-        else if (freq > fSpectralHighCut) {
-            mag = std::pow(fSpectralHighCut,-fSpectralAlpha);
-        }
-        else {
-            mag = std::pow(freq,-fSpectralAlpha);
-        }
-        out[i] *= mag;
-    }
+    double impedMax = 0.0;
+    double norm = 0.0;
 
-    // Fix the normalization.
-    double aNorm = 0.0;
-    for (std::size_t i=0; i<out.size(); ++i) {
-        aNorm += std::abs(out[i]*fResponseFFT[i]);
+    // Sculpt the power spectrum and find the peak.
+    for (std::size_t i=1; i<out.size()/2; ++i) {
+        double freq = deltaFreq*i;
+        double mag = ColoredNoise(freq,
+                                  fSpectralLowCut,
+                                  fSpectralHighCut,
+                                  fSpectralAlpha);
+        
+        double imp = ShortingImpedance(freq,
+                                       fSpectralResist,
+                                       fSpectralIndFreq,
+                                       fSpectralIndRes,
+                                       fSpectralIndPow,
+                                       fSpectralCapFreq,
+                                       fSpectralCapRes,
+                                       fSpectralCapPow);
+        
+        if (imp > impedMax) {
+            norm = mag*imp;
+            impedMax = imp;
+        }
+        out[i] *= mag*imp;
+        out[out.size()-i] = std::conj(out[i]);
     }
 
     // Collect any the magic factors of pi, 2 and sqrt(2) into one spot.  The
-    // fResponseFFT is not normalized, so this is fixing (trying to fix) all
-    // of the factors that are missing in other places in the code (this is
-    // the only place that depends on the absolute normalization of the FFTs).
-    double norm = 1.0;
-    norm *= fDigitOversample*fDigitOversample;
-    norm *= fSpectralNoise*fSpectralNoise;
-    norm /= aNorm;
+    // FFT's are not internally normalized, and depend on the transform and
+    // invers to cancel the global normalization.  This is fixing (trying to
+    // fix) all of the factors that are cancel in other places in the code.
+    if (norm > 0.0) norm = 1.0/norm;
+    norm *= fSpectralNoise;
     for (ComplexVector::iterator c = out.begin(); c != out.end(); ++c) {
         *c *= norm;
     }
@@ -1544,7 +1647,7 @@ void CP::TElecSimple::DigitizeWire(
                 val *= gain*fDigitSlope;
                 // Shift the baseline to the pedestal value.
                 val += pedestal;
-                val += gRandom->Gaus(0,fDigitNoise);
+                if (fDigitNoise>0.01) val += gRandom->Gaus(0,fDigitNoise);
                 int ival = val+0.5;
                 ival = std::max(fDigitMinimum,std::min(ival,fDigitMaximum));
                 if (ival<1) {
