@@ -1395,7 +1395,7 @@ void CP::TElecSimple::GenerateBackgroundSpectrum(CP::TMCChannelId channel,
 
     // Generate Gaussian noise.  This will be "sculpted" to have the right
     // power spectrum.
-    for (int i=1; i<out.size()/2; ++i) {
+    for (std::size_t i=1; i<out.size()/2; ++i) {
         out[i] = std::complex<double>(gRandom->Gaus(),gRandom->Gaus());
         out[out.size()-i] = std::conj(out[i]);
     }
