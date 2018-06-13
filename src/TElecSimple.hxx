@@ -79,6 +79,34 @@ private:
     /// this index white noise is used.
     double fSpectralHighCut;
     
+    /// The series resistance in the noise "short" impedance.  This must be
+    /// between 0.0 and 1.0.
+    double fSpectralResist;
+
+    /// The half power frequency of the inductor in the parallel RLC part of
+    /// the circuit.
+    double fSpectralIndFreq;
+
+    /// The internal resistance of the inductor in the parallel RLC part of
+    /// the circuit.
+    double fSpectralIndRes;
+
+    /// An empirical factor modifying the shape of the impedance vs frequency
+    /// for the inductor.
+    double fSpectralIndPow;
+
+    /// The half power frequency of the capacitor in the parallel RLC part of
+    /// the circuit.
+    double fSpectralCapFreq;
+
+    /// The internal resistance of the capacitor in the parallel RLC part of
+    /// the circuit.
+    double fSpectralCapRes;
+    
+    /// An empirical factor modifying the shape of the impedance vs frequency
+    /// for the capacitor.
+    double fSpectralCapPow;
+
     /// The charge induction factor for the induction wires.  This is assumed
     /// to be the same for the U and V planes since they have similar
     /// electrical properties.  A factor of 1.0 means that an average charge
