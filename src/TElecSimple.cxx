@@ -1,4 +1,5 @@
 #include "TElecSimple.hxx"
+#include "ComplexCauchy.hxx"
 
 #include <TEvent.hxx>
 #include <TG4HitSegment.hxx>
