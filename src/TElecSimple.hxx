@@ -379,6 +379,11 @@ private:
         double fHalfWidth;
     };
 
+    /// A default file to open with the noise peak information.
+    std::string fNoisePeaksFile;
+    
+    /// A vector of discreet frequency noise peak positions, widths and
+    /// heights.
     std::vector<CP::TElecSimple::NoisePeak> fNoisePeaks;
     
 };

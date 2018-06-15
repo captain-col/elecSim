@@ -288,7 +288,14 @@ CP::TElecSimple::TElecSimple() {
     fSpectralCapPow
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.spectral.impedance.capacitor.auxPower");
-    
+
+    if (CP::TRuntimeParameters::Get().HasParameter(
+            "elecSim.simple.discreet.file")) {
+        fNoisePeaksFile
+            = CP::TRuntimeParameters::Get().GetParameterS(
+                "elecSim.simple.discreet.file");
+    }
+        
     // The normalization factor for the charge induced on a wire.
     fWireInductionFactor
         = CP::TRuntimeParameters::Get().GetParameterD(
@@ -303,6 +310,19 @@ CP::TElecSimple::~TElecSimple() {}
 void CP::TElecSimple::operator()(CP::TEvent& event) {
     CaptLog("Event " << event.GetContext());
 
+    if (fNoisePeaks.empty() && !fNoisePeaksFile.empty()) {
+        const char* root = std::getenv("ELECSIMROOT");
+        if (root) {
+            std::string name(root);
+            name += "/parameters/";
+            name += fNoisePeaksFile;
+            OpenNoiseFile(name);
+        }
+        else {
+            CaptError("ELECSIMROOT is undefined");
+        }
+    }
+    
     if (event.GetContext().IsCAPTAIN()) {
         if (CP::TRuntimeParameters::Get().HasParameter(
                 "elecSim.simple.drift.life.capt")) {
@@ -1796,8 +1816,18 @@ CP::TElecSimple::FindDigitRange(int start,
 }
 
 void CP::TElecSimple::OpenNoiseFile(std::string name) {
-    std::ifstream input(name.c_str());
+    fNoisePeaks.clear();
+    if (name.empty()) return;
 
+    std::ifstream input(name.c_str());
+    if (!input.is_open()) {
+        CaptError("Unable to read " << name);
+        std::exit(1);
+    }
+
+    CaptLog("Reading noise from " << name);
+    
+    
     std::string line;
     while (std::getline(input,line)) {
         line = line.substr(0,line.find("#"));
