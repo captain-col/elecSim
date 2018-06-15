@@ -289,9 +289,13 @@ CP::TElecSimple::TElecSimple() {
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.spectral.impedance.capacitor.auxPower");
 
+    fDiscreetScale
+        = CP::TRuntimeParameters::Get().GetParameterD(
+            "elecSim.simple.discreet.scale");
+    
     if (CP::TRuntimeParameters::Get().HasParameter(
             "elecSim.simple.discreet.file")) {
-        fNoisePeaksFile
+        fDiscreetFile
             = CP::TRuntimeParameters::Get().GetParameterS(
                 "elecSim.simple.discreet.file");
     }
@@ -310,12 +314,12 @@ CP::TElecSimple::~TElecSimple() {}
 void CP::TElecSimple::operator()(CP::TEvent& event) {
     CaptLog("Event " << event.GetContext());
 
-    if (fNoisePeaks.empty() && !fNoisePeaksFile.empty()) {
+    if (fDiscreetPeaks.empty() && !fDiscreetFile.empty()) {
         const char* root = std::getenv("ELECSIMROOT");
         if (root) {
             std::string name(root);
             name += "/parameters/";
-            name += fNoisePeaksFile;
+            name += fDiscreetFile;
             OpenNoiseFile(name);
         }
         else {
@@ -1418,9 +1422,9 @@ void CP::TElecSimple::GenerateDiscreetSpectrum(CP::TMCChannelId channel,
     // The frequency step per bin.
     double deltaFreq = 2.0*nyquistFreq/out.size();
 
-    for (std::vector<CP::TElecSimple::NoisePeak>::iterator p
-             = fNoisePeaks.begin();
-         p != fNoisePeaks.end(); ++p) {
+    for (std::vector<CP::TElecSimple::DiscreetPeak>::iterator p
+             = fDiscreetPeaks.begin();
+         p != fDiscreetPeaks.end(); ++p) {
         double power = gRandom->Gaus(p->fPower,p->fPowerSigma);
         if (power<0.0) continue;
         double peak = p->fPeak;
@@ -1434,25 +1438,31 @@ void CP::TElecSimple::GenerateDiscreetSpectrum(CP::TMCChannelId channel,
             // The saved power is the peak height, but we need the integral
             // power, and we have to account for the overall FFT normalization
             // change.
-            double totalPower = power;
+            double totalPower = power*fDiscreetScale;
             totalPower *= std::sqrt(fDigitOversample);
             totalPower *= std::sqrt(2.0*3.14159)*integral;
             out[iFreq] += std::polar(totalPower,phase);
             out[out.size()-iFreq] = std::conj(out[iFreq]);
         }
         else {
-            double gamma = p->fHalfWidth;
-            double norm = fDigitOversample;
+            double gamma = p->fHalfWidth/2.0;
+            double norm = fDigitOversample*fDiscreetScale;
             norm /= std::abs(ComplexCauchy(iFreq*deltaFreq,1.0,peak,gamma));
             int bins = out.size();
             int iLow =
-                std::max(1,int(iFreq - 20*(p->fHalfWidth/deltaFreq+1)));
+                std::max(1,int(iFreq - 1 - 10*(p->fHalfWidth/deltaFreq)));
+            std::complex<double> lowVal
+                = ComplexCauchy(iLow*deltaFreq,power,peak,gamma,phase);
             int iHigh
-                = std::min(bins,int(iFreq + 20*(p->fHalfWidth/deltaFreq+1)));
+                = std::min(bins,int(iFreq + 1 + 10*(p->fHalfWidth/deltaFreq)));
+            std::complex<double> highVal
+                = ComplexCauchy((iHigh-1)*deltaFreq,power,peak,gamma,phase);
             for (int i=iLow; i<iHigh; ++i) {
                 double freq = i*deltaFreq;
                 std::complex<double> v
                     = ComplexCauchy(freq,power,peak,gamma,phase);
+                double r = 1.0*(i-iLow)/(iHigh-iLow-1);
+                v -= (1-r)*lowVal + r*highVal;
                 out[i] += norm*v;
                 out[out.size()-i] = std::conj(out[i]);
             }
@@ -1816,7 +1826,7 @@ CP::TElecSimple::FindDigitRange(int start,
 }
 
 void CP::TElecSimple::OpenNoiseFile(std::string name) {
-    fNoisePeaks.clear();
+    fDiscreetPeaks.clear();
     if (name.empty()) return;
 
     std::ifstream input(name.c_str());
@@ -1833,7 +1843,7 @@ void CP::TElecSimple::OpenNoiseFile(std::string name) {
         line = line.substr(0,line.find("#"));
         if (line.empty()) continue;
         std::istringstream parseLine(line);
-        CP::TElecSimple::NoisePeak peak;
+        CP::TElecSimple::DiscreetPeak peak;
         parseLine >> peak.fIndex
                   >> peak.fPeak
                   >> peak.fPower
@@ -1841,6 +1851,6 @@ void CP::TElecSimple::OpenNoiseFile(std::string name) {
                   >> peak.fHalfWidth;
         peak.fPeak *= unit::hertz;
         peak.fHalfWidth *= unit::hertz;
-        fNoisePeaks.push_back(peak);
+        fDiscreetPeaks.push_back(peak);
     }
 }

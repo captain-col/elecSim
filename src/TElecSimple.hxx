@@ -370,7 +370,7 @@ private:
     /// A buffer to hold the FFT of the delta function response.
     ComplexVector fResponseFFT;
 
-    class NoisePeak {
+    class DiscreetPeak {
     public:
         int fIndex;
         double fPeak;
@@ -379,12 +379,15 @@ private:
         double fHalfWidth;
     };
 
+    /// A scale factor to apply to the discreet noise peak power.
+    double fDiscreetScale;
+    
     /// A default file to open with the noise peak information.
-    std::string fNoisePeaksFile;
+    std::string fDiscreetFile;
     
     /// A vector of discreet frequency noise peak positions, widths and
     /// heights.
-    std::vector<CP::TElecSimple::NoisePeak> fNoisePeaks;
+    std::vector<CP::TElecSimple::DiscreetPeak> fDiscreetPeaks;
     
 };
 #endif
