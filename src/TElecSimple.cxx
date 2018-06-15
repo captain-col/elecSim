@@ -26,7 +26,9 @@
 #include <algorithm>
 #include <numeric>
 #include <memory>
+#include <string>
 #include <iostream>
+#include <fstream>
 
 CP::TElecSimple::TElecSimple() {
     CaptLog("Starting the electronics simulation");
@@ -415,6 +417,7 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
             }
             CP::TMCDigit::ContributorContainer contrib;
             CP::TMCDigit::InfoContainer info;
+
             // A particle generates 1 electron per ~20 eV of deposited energy,
             // so a typical MIP will generate ~5000 electrons per mm, so this
             // is a very low threshold.  If a wire sees less than 10
@@ -425,6 +428,7 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
 
             AddWireNoise(channel,collectedCharge);
             GenerateBackgroundSpectrum(channel,backgroundSpectrum);
+            GenerateDiscreetSpectrum(channel,backgroundSpectrum);
             ShapeCharge(channel,collectedCharge,backgroundSpectrum,
                         shapedCharge);
             DigitizeWire(event,channel,shapedCharge,triggerTimes,
@@ -1383,6 +1387,59 @@ namespace {
     }
 }
 
+void CP::TElecSimple::GenerateDiscreetSpectrum(CP::TMCChannelId channel,
+                                               ComplexVector& out) {
+    // The sample size.
+    double timeStep = (fStopSimulation-fStartSimulation)/out.size();
+
+    // The nyquist frequency in hertz
+    double nyquistFreq = (0.5/timeStep);
+
+    // The frequency step per bin.
+    double deltaFreq = 2.0*nyquistFreq/out.size();
+
+    for (std::vector<CP::TElecSimple::NoisePeak>::iterator p
+             = fNoisePeaks.begin();
+         p != fNoisePeaks.end(); ++p) {
+        double power = gRandom->Gaus(p->fPower,p->fPowerSigma);
+        if (power<0.0) continue;
+        double peak = p->fPeak;
+        int iFreq = peak/deltaFreq;
+        double phase = gRandom->Uniform(0.0,2.0*3.14159);
+        if (p->fHalfWidth < 2.0*deltaFreq) {
+            // Inject a pure frequency spectrum here.  It's going to get shape
+            // when the FFT is inverted, and then redone during calibration.
+            double integral = p->fHalfWidth/deltaFreq;
+            if (integral<1.0) integral = 1.0;
+            // The saved power is the peak height, but we need the integral
+            // power, and we have to account for the overall FFT normalization
+            // change.
+            double totalPower = power;
+            totalPower *= std::sqrt(fDigitOversample);
+            totalPower *= std::sqrt(2.0*3.14159)*integral;
+            out[iFreq] += std::polar(totalPower,phase);
+            out[out.size()-iFreq] = std::conj(out[iFreq]);
+        }
+        else {
+            double gamma = p->fHalfWidth;
+            double norm = fDigitOversample;
+            norm /= std::abs(ComplexCauchy(iFreq*deltaFreq,1.0,peak,gamma));
+            int bins = out.size();
+            int iLow =
+                std::max(1,int(iFreq - 20*(p->fHalfWidth/deltaFreq+1)));
+            int iHigh
+                = std::min(bins,int(iFreq + 20*(p->fHalfWidth/deltaFreq+1)));
+            for (int i=iLow; i<iHigh; ++i) {
+                double freq = i*deltaFreq;
+                std::complex<double> v
+                    = ComplexCauchy(freq,power,peak,gamma,phase);
+                out[i] += norm*v;
+                out[out.size()-i] = std::conj(out[i]);
+            }
+        }
+    }
+}
+
 void CP::TElecSimple::GenerateBackgroundSpectrum(CP::TMCChannelId channel,
                                                  ComplexVector& out) {
     // The sample size.
@@ -1736,4 +1793,24 @@ CP::TElecSimple::FindDigitRange(int start,
                                  tBin + postThresholdBins);
 
     return digitRange;
+}
+
+void CP::TElecSimple::OpenNoiseFile(std::string name) {
+    std::ifstream input(name.c_str());
+
+    std::string line;
+    while (std::getline(input,line)) {
+        line = line.substr(0,line.find("#"));
+        if (line.empty()) continue;
+        std::istringstream parseLine(line);
+        CP::TElecSimple::NoisePeak peak;
+        parseLine >> peak.fIndex
+                  >> peak.fPeak
+                  >> peak.fPower
+                  >> peak.fPowerSigma
+                  >> peak.fHalfWidth;
+        peak.fPeak *= unit::hertz;
+        peak.fHalfWidth *= unit::hertz;
+        fNoisePeaks.push_back(peak);
+    }
 }

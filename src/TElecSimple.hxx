@@ -30,6 +30,9 @@ public:
 
     void operator()(CP::TEvent& event);
 
+    /// Set a file of discreet freqency noise sources.
+    void OpenNoiseFile(std::string name);
+    
 private:
     /// The start of the simulation window.  The FADC time steps are measured
     /// relative to this time.  The start of the simulation must always
@@ -301,6 +304,11 @@ private:
                                     ComplexVector& out);
     
 
+    /// Generate the noise at discreet frequencies.  This is added an existing
+    /// noise vector.
+    void GenerateDiscreetSpectrum(CP::TMCChannelId channel,
+                                  ComplexVector& out);
+    
     /// Generate the FFT of the electronics response.  This fills the
     /// necessary vectors for use later.
     void GenerateResponseFFT(std::size_t samples);
@@ -362,5 +370,16 @@ private:
     /// A buffer to hold the FFT of the delta function response.
     ComplexVector fResponseFFT;
 
+    class NoisePeak {
+    public:
+        int fIndex;
+        double fPeak;
+        double fPower;
+        double fPowerSigma;
+        double fHalfWidth;
+    };
+
+    std::vector<CP::TElecSimple::NoisePeak> fNoisePeaks;
+    
 };
 #endif

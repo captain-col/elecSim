@@ -15,12 +15,21 @@ public:
     void Usage(void) {     }
 
     virtual bool SetOption(std::string option,std::string value="") {
-        return true;
+        if (option=="noise") {
+            fNoiseFile = value;
+            return true;
+        }
+        return false;
     }
 
     bool operator () (CP::TEvent& event) {
         // Make sure the electronics simulated is created.
-        if (!fElecSim) fElecSim = new CP::TElecSimple();
+        if (!fElecSim) {
+            fElecSim = new CP::TElecSimple();
+            if (!fNoiseFile.empty()) {
+                fElecSim->OpenNoiseFile(fNoiseFile);
+            }
+        }
 
         // Run the simulation on the event.
         (*fElecSim)(event);
@@ -31,6 +40,8 @@ public:
 
 private:
     CP::TElecSimple* fElecSim;
+
+    std::string fNoiseFile;
 };
 
 int main(int argc, char **argv) {
