@@ -87,13 +87,13 @@ CP::TElecSimple::TElecSimple() {
             "elecSim.simple.amplifier.integral");
 
     // The gain of the amplifier for the collection plane.  This must be
-    // matched to the range of the ADC.
+    // matched to the range of the ADC.  The units are mV/fC
     fAmplifierCollectionGain
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.amplifier.gain.collection");
     fAmplifierCollectionGain *= unit::mV/unit::fC;
 
-    // The gain of the amplifier for the induction planes.
+    // The gain of the amplifier for the induction planes.  The units are mV/fC
     fAmplifierInductionGain
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.amplifier.gain.induction");
@@ -442,19 +442,24 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
             CP::TMCDigit::ContributorContainer contrib;
             CP::TMCDigit::InfoContainer info;
 
-            // A particle generates 1 electron per ~20 eV of deposited energy,
-            // so a typical MIP will generate ~5000 electrons per mm, so this
-            // is a very low threshold.  If a wire sees less than 10
-            // electrons, then it really didn't see anything (ie < few hundred
-            // eV of deposited energy).
-            double charge = DriftCharge(event,channel,collectedCharge,
-                                        contrib,info);
-
+            // Add the "time space" effect to the charge on the wire.  These
+            // are applied before the shaping amplifier.
+            DriftCharge(event,channel,collectedCharge,contrib,info);
             AddWireNoise(channel,collectedCharge);
+
+            /// Add the post-amplification effects.  These are applied using
+            /// in "frequency space".
             GenerateBackgroundSpectrum(channel,backgroundSpectrum);
             GenerateDiscreetSpectrum(channel,backgroundSpectrum);
-            ShapeCharge(channel,collectedCharge,backgroundSpectrum,
+
+            // Shape the time-space effects and add them to the
+            // post-amplification effects.
+            ShapeCharge(channel,
+                        collectedCharge,
+                        backgroundSpectrum,
                         shapedCharge);
+
+            // Apply the digitization to the resulting charge.
             DigitizeWire(event,channel,shapedCharge,triggerTimes,
                          contrib,info);
 
@@ -1618,11 +1623,14 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         CaptError("Output vector does not match input size.");
         out.resize(in.size());
     }
+    std::fill(out.begin(), out.end(), 0.0);
 
-    for (RealVector::iterator t = out.begin(); t != out.end(); ++t) {
-        *t = 0;
+    // Get the gain for this channel.
+    double gain = fAmplifierCollectionGain;
+    if (channel.GetType() == 0 && channel.GetSequence() != 0) {
+        gain = fAmplifierInductionGain;
     }
-
+        
     // The normalization factor per transform;
     double norm = 1.0/std::sqrt(1.0*in.size());
 
@@ -1634,7 +1642,7 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
 
     // Take the FFT of the input.
     for (std::size_t i = 0; i<in.size(); ++i) {
-        double val = in[i];
+        double val = gain*in[i];
         fFFT->SetPoint(i,val);
     }
     fFFT->Transform();
@@ -1647,7 +1655,7 @@ void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
         fFFT->GetPointComplex(i,rl,im);
         v += norm*std::complex<double>(rl,im);
         v *= fResponseFFT[i];
-        v += bkg[i];
+        v += gain*bkg[i];
         fInvertFFT->SetPoint(i,v.real(),v.imag());
     }
 
@@ -1679,12 +1687,6 @@ void CP::TElecSimple::DigitizeWire(
         CP::TDigitContainer* dg = new CP::TDigitContainer("drift");
         dv->AddDatum(dg);
         digits = ev.Get<CP::TDigitContainer>("~/digits/drift");
-    }
-
-    // Get the gain for this channel.
-    double gain = fAmplifierCollectionGain;
-    if (channel.GetType() == 0 && channel.GetSequence() != 0) {
-        gain = fAmplifierInductionGain;
     }
 
     // Check for numeric problems
@@ -1732,7 +1734,7 @@ void CP::TElecSimple::DigitizeWire(
                  bin < digitRange.second; bin += stride) {
                 double val = 0;
                 val = in[bin];
-                val *= gain*fDigitSlope;
+                val *= fDigitSlope;
                 // Shift the baseline to the pedestal value.
                 val += pedestal;
                 if (fDigitNoise>0.01) val += gRandom->Gaus(0,fDigitNoise);
