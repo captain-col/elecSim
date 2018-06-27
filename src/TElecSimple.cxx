@@ -248,7 +248,9 @@ CP::TElecSimple::TElecSimple() {
     fSpectralNoise
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.spectral.noise");
-
+    // The parameter has units of ADC, so turn it into voltage.
+    fSpectralNoise /= fDigitSlope;
+    
     fSpectralAlpha
         = CP::TRuntimeParameters::Get().GetParameterD(
             "elecSim.simple.spectral.alpha");
@@ -413,13 +415,15 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
     // Calculate the number of bins in the TPC samples.
     int chargeBins = (fStopSimulation - fStartSimulation)/timeStep;
     chargeBins = 2*(1+chargeBins/2);
-
+    
     // Check if the stop time needs to be adjusted.
     fStopSimulation = fStartSimulation + chargeBins*timeStep;
 
     RealVector collectedCharge(chargeBins);
-    RealVector shapedCharge(chargeBins);
-    ComplexVector backgroundSpectrum(chargeBins);
+    ComplexVector frequencySpectrum(chargeBins);
+    ComplexVector workSpace(chargeBins);
+    RealVector measuredCharge(chargeBins);
+
     GenerateResponseFFT(chargeBins);
 
     // For each wire in the detector, figure out the signal.  The loop is done
@@ -427,6 +431,7 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
     // being simulated.
     int count = 0;
     for (int plane = 0; plane < 5; ++plane) {
+
         // Check to see if this plane exists, quit if it doesn't.
         if (!CP::TManager::Get().GeomId().CdId(
                 CP::GeomId::Captain::Plane(plane))) break;
@@ -442,92 +447,33 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
             CP::TMCDigit::ContributorContainer contrib;
             CP::TMCDigit::InfoContainer info;
 
+            std::fill(collectedCharge.begin(), collectedCharge.end(), 0.0);
+            std::fill(measuredCharge.begin(), measuredCharge.end(), 0.0);
+            std::fill(frequencySpectrum.begin(), frequencySpectrum.end(),
+                      std::complex<double>(0.0,0.0));
+            std::fill(workSpace.begin(), workSpace.end(),
+                      std::complex<double>(0.0,0.0));
+
             // Add the "time space" effect to the charge on the wire.  These
             // are applied before the shaping amplifier.
             DriftCharge(event,channel,collectedCharge,contrib,info);
             AddWireNoise(channel,collectedCharge);
+            ShapeCharge(channel,collectedCharge,frequencySpectrum);
 
             /// Add the post-amplification effects.  These are applied using
             /// in "frequency space".
-            GenerateBackgroundSpectrum(channel,backgroundSpectrum);
-            GenerateDiscreetSpectrum(channel,backgroundSpectrum);
+            GenerateBackgroundSpectrum(channel,frequencySpectrum,workSpace);
+            GenerateDiscreetSpectrum(channel,frequencySpectrum,workSpace);
 
-            // Shape the time-space effects and add them to the
-            // post-amplification effects.
-            ShapeCharge(channel,
-                        collectedCharge,
-                        backgroundSpectrum,
-                        shapedCharge);
+            InverseFFT(frequencySpectrum,measuredCharge);
 
             // Apply the digitization to the resulting charge.
-            DigitizeWire(event,channel,shapedCharge,triggerTimes,
+            DigitizeWire(event,channel,measuredCharge,triggerTimes,
                          contrib,info);
 
-#ifdef FILL_HISTOGRAM
-#undef FILL_HISTOGRAM
-            TH1F* collectedHist
-                = new TH1F((channel.AsString()+"-collected").c_str(),
-                           ("Collected charge for "
-                            + channel.AsString()).c_str(),
-                           collectedCharge.size(),
-                           0.0, timeStep*collectedCharge.size());
-            for (std::size_t i = 0; i<collectedCharge.size(); ++i) {
-                collectedHist->SetBinContent(i+1,collectedCharge[i]);
-            }
-            collectedHist->SetBinContent(1,charge);
-#endif
-
-#ifdef FILL_HISTOGRAM
-#undef FILL_HISTOGRAM
-            TH1F* shapedHist
-                = new TH1F((channel.AsString()+"-shaped").c_str(),
-                           ("Shaped charge for " + channel.AsString()).c_str(),
-                           shapedCharge.size(),
-                           0.0, timeStep*shapedCharge.size());
-            for (std::size_t i = 0; i<shapedCharge.size(); ++i) {
-                shapedHist->SetBinContent(i+1,shapedCharge[i]);
-            }
-#endif
-
-#ifdef FILL_HISTOGRAM
-#undef FILL_HISTOGRAM
-            {
-                double maxVal = 0.0;
-                for (std::size_t i = 0; i<shapedCharge.size(); ++i) {
-                    maxVal = std::max(maxVal,std::abs(shapedCharge[i]));
-                }
-                int maxBins = maxVal + 1;
-                TH1F* noiseHist
-                    = new TH1F((channel.AsString()+"-noise").c_str(),
-                               ("Charge RMS for " + channel.AsString()).c_str(),
-                               maxBins, -maxVal, maxVal);
-                for (std::size_t i = 0; i<shapedCharge.size(); ++i) {
-                    noiseHist->Fill(shapedCharge[i]);
-                }
-            }
-#endif
             
         }
     }
-
-#ifdef FILL_HISTOGRAM
-#undef FILL_HISTOGRAM
-            int binStride = fDigitStep/timeStep + 0.5;
-            TH1F* binnedHist
-                = new TH1F((channel.AsString()+"-binned").c_str(),
-                           ("Collected charge digit step bins for "
-                            + channel.AsString()).c_str(),
-                           collectedCharge.size()/binStride,
-                           0.0, timeStep*collectedCharge.size());
-            for (std::size_t i = 0; i<collectedCharge.size(); i += binStride) {
-                double q = 0.0;
-                for (int b=0; b<binStride; ++b) {
-                    q += collectedCharge[i+b];
-                }
-                binnedHist->SetBinContent(i/binStride+1,q);
-            }
-            binnedHist->SetBinContent(1,charge);
-#endif
 
     return;
 }
@@ -627,6 +573,68 @@ void CP::TElecSimple::AddElecSimHeader(CP::TEvent& event) {
     argonState->push_back(fElectronLife);
     header->AddDatum(argonState.release());
 
+}
+
+void CP::TElecSimple::FFT(const RealVector& in,ComplexVector& out) {
+
+    if (in.size() != out.size()) {
+        CaptError("Invalid input and output sizes");
+        throw;
+    }
+    
+    if (!fFFT) {
+        int len = in.size();
+        fFFT = TVirtualFFT::FFT(1,&len,"R2C K M");
+        if (len != (int) in.size()) {
+            CaptError("Invalid length for FFT");
+            CaptError("     original length: " << in.size());
+            CaptError("     allocated length: " << len);
+        }
+        CaptLog("FFT initialized with " << len << " elements");
+    }
+
+    for (std::size_t i = 0; i<in.size(); ++i) {
+        fFFT->SetPoint(i,in[i]);
+    }
+
+    fFFT->Transform();
+
+    double norm = 1.0/std::sqrt(1.0*out.size());
+    for (std::size_t i = 0; i<out.size(); ++i) {
+        double rl, im;
+        fFFT->GetPointComplex(i,rl,im);
+        out[i] = norm*std::complex<double>(rl,im);
+    }
+}
+
+void CP::TElecSimple::InverseFFT(const ComplexVector& in, RealVector& out) {
+
+    if (in.size() != out.size()) {
+        CaptError("Invalid input and output sizes");
+        throw;
+    }
+    
+    if (!fInvertFFT) {
+        int len = in.size();
+        fInvertFFT = TVirtualFFT::FFT(1,&len,"C2R K M");
+        if (len != (int) in.size()) {
+            CaptError("Invalid length for FFT");
+            CaptError("     original length: " << in.size());
+            CaptError("     allocated length: " << len);
+        }
+        CaptLog("FFT initialized with " << len << " elements");
+    }
+
+    for (std::size_t i = 0; i<in.size(); ++i) {
+        fInvertFFT->SetPoint(i,in[i].real(),in[i].imag());
+    }
+
+    fInvertFFT->Transform();
+    
+    double norm = 1.0/std::sqrt(1.0*out.size());
+    for (std::size_t i=0; i<out.size(); ++i) {
+        out[i] = norm*fInvertFFT->GetPointReal(i);
+    }
 }
 
 void CP::TElecSimple::GenerateTriggers(CP::TEvent& event,
@@ -862,9 +870,9 @@ void CP::TElecSimple::DigitizeLight(
 
     std::size_t pmtBins = (fStopSimulation-fStartSimulation)/fPMTStep;
     
-    RealVector shapedCharge;
-    if (shapedCharge.size() < pmtBins) {
-        shapedCharge.resize(pmtBins);
+    RealVector measuredCharge;
+    if (measuredCharge.size() < pmtBins) {
+        measuredCharge.resize(pmtBins);
     }
 
     // Add the signal for each photon.
@@ -892,7 +900,7 @@ void CP::TElecSimple::DigitizeLight(
             sig *= fAmplifierPMTGain;
             gainSignal += sig;
             sigMax = std::max(sigMax,sig);
-            shapedCharge[bin] += sig;
+            measuredCharge[bin] += sig;
         }
     }
     
@@ -910,7 +918,7 @@ void CP::TElecSimple::DigitizeLight(
         // This is the last bin in the digitization window
         int stopBin = startBin + (stopTime-startTime)/fPMTStep;
         if (startBin < 0) startBin = 0;
-        if (stopBin > (int) shapedCharge.size()) stopBin = shapedCharge.size();
+        if (stopBin > (int) measuredCharge.size()) stopBin = measuredCharge.size();
         // This is the first bin that might end up in a new digit.
         int lastStop = startBin;
         // The threshold to save a region of the FADC.  If this is negative,
@@ -929,7 +937,7 @@ void CP::TElecSimple::DigitizeLight(
                 // variable is the bin where the threshold was crossed.
                 int tBin;
                 for (tBin=digitRange.first; tBin<digitRange.second; ++tBin) {
-                    if (shapedCharge[tBin] > threshold) {
+                    if (measuredCharge[tBin] > threshold) {
                         digitRange.first = std::max(digitRange.first,
                                                     tBin - preThresholdBins);
                         break;
@@ -945,7 +953,7 @@ void CP::TElecSimple::DigitizeLight(
                 bool zeroRangeFound = false;
                 do {
                     // Move to the first bin that is below threshold.
-                    while (shapedCharge[tBin] > threshold
+                    while (measuredCharge[tBin] > threshold
                            && tBin < digitRange.second) ++tBin;
                     // Check if there is a long section of zeros.  This allows
                     // room for the next preThresholdBins region.
@@ -954,7 +962,7 @@ void CP::TElecSimple::DigitizeLight(
                          i<tBin+postThresholdBins+preThresholdBins
                              && i<digitRange.second;
                          ++i) {
-                        if (shapedCharge[i] > threshold) {
+                        if (measuredCharge[i] > threshold) {
                             tBin = i;
                             zeroRangeFound = false;
                             break;
@@ -973,7 +981,7 @@ void CP::TElecSimple::DigitizeLight(
             double digitizedTotal = 0.0;
             CP::TPulseDigit::Vector adc;
             for (int bin = digitRange.first; bin < digitRange.second; ++bin) {
-                double val = shapedCharge[bin];
+                double val = measuredCharge[bin];
                 digitizedTotal += val;
                 // Shift the baseline to the pedestal value.
                 val += pedestal;
@@ -1109,10 +1117,6 @@ double CP::TElecSimple::DriftCharge(
     RealVector& out,
     CP::TMCDigit::ContributorContainer& contrib,
     CP::TMCDigit::InfoContainer& info) {
-
-    for (RealVector::iterator t = out.begin(); t != out.end(); ++t) {
-        *t = 0;
-    }
 
     // Get the drift hits.
     CP::THandle<CP::TG4HitContainer> g4Hits =
@@ -1343,6 +1347,7 @@ void CP::TElecSimple::AddWireNoise(CP::TMCChannelId channel,
     for (RealVector::iterator o = out.begin(); o != out.end(); ++o) {
         (*o) += gRandom->Gaus(0,sampleNoise);
     }
+
 }
 
 namespace {
@@ -1416,90 +1421,37 @@ namespace {
     }
 }
 
-void CP::TElecSimple::GenerateDiscreetSpectrum(CP::TMCChannelId channel,
-                                               ComplexVector& out) {
-    // The sample size.
-    double timeStep = (fStopSimulation-fStartSimulation)/out.size();
-
-    // The nyquist frequency in hertz
-    double nyquistFreq = (0.5/timeStep);
-
-    // The frequency step per bin.
-    double deltaFreq = 2.0*nyquistFreq/out.size();
-
-    for (std::vector<CP::TElecSimple::DiscreetPeak>::iterator p
-             = fDiscreetPeaks.begin();
-         p != fDiscreetPeaks.end(); ++p) {
-        double power = gRandom->Gaus(p->fPower,p->fPowerSigma);
-        if (power<0.0) continue;
-        double peak = p->fPeak;
-        int iFreq = peak/deltaFreq;
-        double phase = gRandom->Uniform(0.0,2.0*3.14159);
-        if (p->fHalfWidth < 2.0*deltaFreq) {
-            // Inject a pure frequency spectrum here.  It's going to get shape
-            // when the FFT is inverted, and then redone during calibration.
-            double integral = p->fHalfWidth/deltaFreq;
-            if (integral<1.0) integral = 1.0;
-            // The saved power is the peak height, but we need the integral
-            // power, and we have to account for the overall FFT normalization
-            // change.
-            double totalPower = power*fDiscreetScale;
-            totalPower *= std::sqrt(fDigitOversample);
-            totalPower *= std::sqrt(2.0*3.14159)*integral;
-            out[iFreq] += std::polar(totalPower,phase);
-            out[out.size()-iFreq] = std::conj(out[iFreq]);
-        }
-        else {
-            double gamma = p->fHalfWidth/2.0;
-            double norm = fDigitOversample*fDiscreetScale;
-            norm /= std::abs(ComplexCauchy(iFreq*deltaFreq,1.0,peak,gamma));
-            int bins = out.size();
-            int iLow =
-                std::max(1,int(iFreq - 1 - 10*(p->fHalfWidth/deltaFreq)));
-            std::complex<double> lowVal
-                = ComplexCauchy(iLow*deltaFreq,power,peak,gamma,phase);
-            int iHigh
-                = std::min(bins,int(iFreq + 1 + 10*(p->fHalfWidth/deltaFreq)));
-            std::complex<double> highVal
-                = ComplexCauchy((iHigh-1)*deltaFreq,power,peak,gamma,phase);
-            for (int i=iLow; i<iHigh; ++i) {
-                double freq = i*deltaFreq;
-                std::complex<double> v
-                    = ComplexCauchy(freq,power,peak,gamma,phase);
-                double r = 1.0*(i-iLow)/(iHigh-iLow-1);
-                v -= (1-r)*lowVal + r*highVal;
-                out[i] += norm*v;
-                out[out.size()-i] = std::conj(out[i]);
-            }
-        }
-    }
-}
-
 void CP::TElecSimple::GenerateBackgroundSpectrum(CP::TMCChannelId channel,
-                                                 ComplexVector& out) {
+                                                 ComplexVector& inOut,
+                                                 ComplexVector& work) {
+    if (inOut.size() != work.size()) {
+        CaptError("Wrong work vector size");
+        throw;
+    }
+
     // The sample size.
-    double timeStep = (fStopSimulation-fStartSimulation)/out.size();
+    double timeStep = (fStopSimulation-fStartSimulation)/work.size();
 
     // The nyquist frequency in hertz
     double nyquistFreq = (0.5/timeStep);
 
     // The frequency step per bin.
-    double deltaFreq = 2.0*nyquistFreq/out.size();
+    double deltaFreq = 2.0*nyquistFreq/work.size();
 
     // Generate Gaussian noise.  This will be "sculpted" to have the right
     // power spectrum.
-    for (std::size_t i=1; i<out.size()/2; ++i) {
-        out[i] = std::complex<double>(gRandom->Gaus(),gRandom->Gaus());
-        out[out.size()-i] = std::conj(out[i]);
+    for (std::size_t i=1; i<work.size()/2; ++i) {
+        work[i] = std::complex<double>(gRandom->Gaus(),gRandom->Gaus());
+        work[work.size()-i] = std::conj(work[i]);
     }
-    out[0] = std::complex<double>(0.0,0.0);
-    out[out.size()/2] = std::complex<double>(0.0,0.0);
+    work[0] = std::complex<double>(0.0,0.0);
+    work[work.size()/2] = std::complex<double>(0.0,0.0);
     
     double impedMax = 0.0;
     double norm = 0.0;
 
     // Sculpt the power spectrum and find the peak.
-    for (std::size_t i=1; i<out.size()/2; ++i) {
+    for (std::size_t i=1; i<work.size()/2; ++i) {
         double freq = deltaFreq*i;
         double mag = ColoredNoise(freq,
                                   fSpectralLowCut,
@@ -1519,20 +1471,96 @@ void CP::TElecSimple::GenerateBackgroundSpectrum(CP::TMCChannelId channel,
             norm = mag*imp;
             impedMax = imp;
         }
-        out[i] *= mag*imp;
-        out[out.size()-i] = std::conj(out[i]);
+
+        work[i] *= mag*imp;
+        work[work.size()-i] = std::conj(work[i]);
     }
 
-    // Collect any the magic factors of pi, 2 and sqrt(2) into one spot.  The
-    // FFT's are not internally normalized, and depend on the transform and
-    // invers to cancel the global normalization.  This is fixing (trying to
-    // fix) all of the factors that are cancel in other places in the code.
-    if (norm > 0.0) norm = 1.0/norm;
-    norm *= fSpectralNoise;
-    for (ComplexVector::iterator c = out.begin(); c != out.end(); ++c) {
-        *c *= norm;
+    // Adjust the normalization of the curve at the frequency with maximum
+    // shorting impedance.
+    if (norm > 0.0) norm = fSpectralNoise/norm;
+    else {
+        CaptError("Invalid normalization");
+        throw;
     }
 
+    for (std::size_t i=1; i<work.size()/2; ++i) {
+        inOut[i] += norm*work[i];
+        inOut[inOut.size()-i] = std::conj(inOut[i]); 
+    }
+}
+
+void CP::TElecSimple::GenerateDiscreetSpectrum(CP::TMCChannelId channel,
+                                               ComplexVector& inOut,
+                                               ComplexVector& work) {
+
+    // The sample size.
+    double timeStep = (fStopSimulation-fStartSimulation)/work.size();
+
+    // The nyquist frequency in hertz
+    double nyquistFreq = (0.5/timeStep);
+
+    // The frequency step per bin.
+    double deltaFreq = 2.0*nyquistFreq/work.size();
+    
+    std::fill(work.begin(), work.end(), std::complex<double>(0.0,0.0));
+    
+    for (std::vector<CP::TElecSimple::DiscreetPeak>::iterator p
+             = fDiscreetPeaks.begin();
+         p != fDiscreetPeaks.end(); ++p) {
+        double power = gRandom->Gaus(p->fPower,p->fPowerSigma);
+        if (power<0.0) continue;
+        power = p->fPower+p->fBackground;
+        power = std::sqrt(power*power - p->fBackground*p->fBackground);
+        power *= fDiscreetScale;
+        power /= fDigitSlope;
+        power /= std::sqrt(work.size()/fDigitOversample);
+        double freq = p->fFrequency;
+        std::size_t iFreq = freq/deltaFreq - 0.5;
+        if (iFreq < 1 || iFreq > work.size()/2 - 1) {
+            CaptError("Bad Freq " << freq << " " << deltaFreq
+                      << " " << iFreq);
+            continue;
+        }
+        double phase = gRandom->Uniform(0.0,2.0*3.14159);
+#define SKIP_CAUCHY_PEAK true
+        if (SKIP_CAUCHY_PEAK || p->fHalfWidth < fDigitOversample*deltaFreq) {
+            // Peak is narrow, so inject a single frequency.
+            work[iFreq] += std::polar(2.0*power,phase);
+            work[work.size()-iFreq] = std::conj(work[iFreq]);
+        }
+#ifndef SKIP_CAUCHY_PEAK
+        else {
+            // Peak is wide, so inject a Cauchy.  This is skipped here since
+            // the resulting model doesn't reproduce the data very well.
+            double gamma = p->fHalfWidth/2.0;
+            // Determine the normalization so that the power determines the
+            // peak height.
+            double norm = fDigitOversample;
+            norm *= std::abs(ComplexCauchy(iFreq*deltaFreq,1.0,freq,gamma));
+            norm = 1.0/norm;
+            // Only add the Cauchy within 10 half widths of the peak.
+            int halfWidths = 10;
+            int bins = work.size();
+            int iLow = iFreq - 1 - halfWidths*(p->fHalfWidth/deltaFreq);
+            iLow = std:max(1,iLow);
+            int iHigh
+                = std::min(bins,int(iFreq + 1 + 10*(p->fHalfWidth/deltaFreq)));
+            for (int i=iLow; i<iHigh; ++i) {
+                double freq = i*deltaFreq;
+                std::complex<double> v
+                    = ComplexCauchy(freq,power,freq,gamma,phase);
+                work[i] += norm*v;
+                work[work.size()-i] = std::conj(work[i]);
+            }
+        }
+#endif
+    }
+    
+    for (std::size_t i=1; i<work.size()/2; ++i) {
+        inOut[i] += work[i];
+        inOut[inOut.size()-i] = std::conj(inOut[i]); 
+    }
 }
 
 void CP::TElecSimple::GenerateResponseFFT(std::size_t samples) {
@@ -1542,129 +1570,47 @@ void CP::TElecSimple::GenerateResponseFFT(std::size_t samples) {
     // Take the FFT of the response model.  This will allocate new FFTs if
     // it's required.
     if (samples != fResponseFFT.size()) {
-        CaptLog("Initialize the FFT for convolutions");
-        int len = samples;
-        if (fFFT) delete fFFT;
-        fFFT = TVirtualFFT::FFT(1,&len,"R2C K M");
-        if (len != (int) samples) {
-            CaptError("Invalid length for FFT");
-            CaptError("     original length: " << samples);
-            CaptError("     allocated length: " << len);
-        }
-        len = samples;  // reinitialize in case the length changed.
-        if (fInvertFFT) delete fInvertFFT;
-        CaptLog("Initialize the Inverted FFT for convolutions");
-        fInvertFFT = TVirtualFFT::FFT(1,&len,"C2R K M");
-        if (len != (int) samples) {
-            CaptError("Invalid length for inverse FFT");
-            CaptError("     original length: " << samples);
-            CaptError("     allocated length: " << len);
-        }
-        CaptLog("FFT initialized with " << len << " elements");
         CaptLog("Create the response FFT");
         fResponseFFT.resize(samples);
+        RealVector pulseShape(samples);
         // Find the normalization for the response
         double responseNorm = 0.0;
-        for (int i = 0; i<len; ++i) {
+        for (std::size_t i = 0; i<samples; ++i) {
+            pulseShape[i] = PulseShaping(i*timeStep, timeStep);
             if (fAmplifierConserveIntegral) {
-                responseNorm += PulseShaping(i*timeStep, timeStep);
+                responseNorm += pulseShape[i];
             }
             else {
-                responseNorm = std::max(
-                    responseNorm,PulseShaping(i*timeStep, timeStep));
+                responseNorm = std::max(responseNorm,pulseShape[i]);
             }
         }
-        // Take the FFT with the delta function response.
-        for (int i = 0; i<len; ++i) {
-            double val = PulseShaping(i*timeStep, timeStep);
-            fFFT->SetPoint(i,val/responseNorm);
-        }
-
-#ifdef FILL_HISTOGRAM
-#undef FILL_HISTOGRAM
-        TH1F* elecResp = new TH1F("elecResp",
-                                  "Electronics Response",
-                                  100,
-                                  0.0, 100.0*timeStep);
-        for (int i = 0; i<100; ++i) {
-            double val = PulseShaping(i*timeStep, timeStep);
-            elecResp->SetBinContent(i+1, std::abs(val)/responseNorm);
-        }
-#endif
-
-        // Take the transform and save it for later.
-        fFFT->Transform();
-        for (int i = 0; i<len; ++i) {
-            double rl, im;
-            fFFT->GetPointComplex(i,rl,im);
-            fResponseFFT[i] = std::complex<double>(rl,im);
-        }
-
-#ifdef FILL_HISTOGRAM
-#undef FILL_HISTOGRAM
-        TH1F* elecFFT = new TH1F("elecFFT",
-                                 "Electronics Response FFT",
-                                 100,
-                                 0.0, 100.0);
-        for (int i = 0; i<100; ++i) {
-            elecFFT->SetBinContent(i+1, std::abs(fResponseFFT[i]));
-        }
-#endif
-
+        responseNorm /= std::sqrt(1.0*fResponseFFT.size());
+        for (std::size_t i = 0; i<samples; ++i) pulseShape[i] /= responseNorm;
+        FFT(pulseShape,fResponseFFT);
     }
 }
 
-
 void CP::TElecSimple::ShapeCharge(CP::TMCChannelId channel,
                                   const RealVector& in,
-                                  const ComplexVector& bkg,
-                                  RealVector& out) {
+                                  ComplexVector& out) {
     if (out.size() != in.size()) {
         CaptError("Output vector does not match input size.");
         out.resize(in.size());
     }
-    std::fill(out.begin(), out.end(), 0.0);
-
+    
     // Get the gain for this channel.
     double gain = fAmplifierCollectionGain;
     if (channel.GetType() == 0 && channel.GetSequence() != 0) {
         gain = fAmplifierInductionGain;
     }
         
-    // The normalization factor per transform;
-    double norm = 1.0/std::sqrt(1.0*in.size());
+    FFT(in,out);
 
-    if (fResponseFFT.size() != bkg.size()) {
-        CaptError("Invalid length for background spectrum");
-        CaptError("     expected length: " << fResponseFFT.size());
-        CaptError("     background length: " << bkg.size());
-    }
-
-    // Take the FFT of the input.
-    for (std::size_t i = 0; i<in.size(); ++i) {
-        double val = gain*in[i];
-        fFFT->SetPoint(i,val);
-    }
-    fFFT->Transform();
-
-    // Add the background spectrum and take the convolution in frequency
-    // space.
-    for (std::size_t i=0; i<in.size(); ++i) {
-        std::complex<double> v(0,0);
-        double rl, im;
-        fFFT->GetPointComplex(i,rl,im);
-        v += norm*std::complex<double>(rl,im);
-        v *= fResponseFFT[i];
-        v += gain*bkg[i];
-        fInvertFFT->SetPoint(i,v.real(),v.imag());
-    }
-
-    // Transform back to time space.
-    fInvertFFT->Transform();
+    // Take the convolution in frequency space.
     for (std::size_t i=0; i<out.size(); ++i) {
-        out[i] = norm*fInvertFFT->GetPointReal(i);
+        out[i] *= gain*fResponseFFT[i];
     }
-    
+
 }
 
 void CP::TElecSimple::DigitizeWire(
@@ -1701,7 +1647,7 @@ void CP::TElecSimple::DigitizeWire(
     // (it always rounds to the same value, but it does shift the probability
     // of the actual ADC mean.
     double pedestal = fDigitPedestal + gRandom->Uniform(-0.5, 0.5);
-
+    
     // Calculate the time step for the input.
     double timeStep = (fStopSimulation-fStartSimulation)/in.size();
 
@@ -1725,13 +1671,16 @@ void CP::TElecSimple::DigitizeWire(
             std::pair<int,int> digitRange
                 = FindDigitRange(lastStop,startBin,stopBin,in);
 
-            if (digitRange.first == digitRange.second) break;
+            if (digitRange.first == digitRange.second) {
+                CaptLog("No hit ");
+                break;
+            }
 
             // Now copy to the output.  The new digit is between start and scan.
             CP::TPulseDigit::Vector adc;
             int stride = (int) (fDigitStep/timeStep + 0.5);
             for (int bin = digitRange.first;
-                 bin < digitRange.second; bin += stride) {
+                 bin < digitRange.second-stride; bin += stride) {
                 double val = 0;
                 val = in[bin];
                 val *= fDigitSlope;
@@ -1750,6 +1699,7 @@ void CP::TElecSimple::DigitizeWire(
                 }
                 adc.push_back(ival);
             }
+
             CP::TPulseMCDigit* digit
                 = new TPulseMCDigit(channel,
                                     (digitRange.first-startBin)/stride,
@@ -1847,11 +1797,12 @@ void CP::TElecSimple::OpenNoiseFile(std::string name) {
         std::istringstream parseLine(line);
         CP::TElecSimple::DiscreetPeak peak;
         parseLine >> peak.fIndex
-                  >> peak.fPeak
+                  >> peak.fFrequency
                   >> peak.fPower
                   >> peak.fPowerSigma
-                  >> peak.fHalfWidth;
-        peak.fPeak *= unit::hertz;
+                  >> peak.fHalfWidth
+                  >> peak.fBackground;
+        peak.fFrequency *= unit::hertz;
         peak.fHalfWidth *= unit::hertz;
         fDiscreetPeaks.push_back(peak);
     }

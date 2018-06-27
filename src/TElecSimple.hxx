@@ -264,6 +264,12 @@ private:
     /// 3.
     void AddElecSimHeader(CP::TEvent& ev);
 
+    /// To the FFT from a real vector to a complex vector.
+    void FFT(const RealVector& in, ComplexVector& out);
+
+    /// Do the Inverse FFT from a complex vector to a real vector.
+    void InverseFFT(const ComplexVector& in, RealVector& out);
+
     /// Find the trigger times for an event.  This is controlled by paramters
     /// in the elecSim.parameters.dat file.
     void GenerateTriggers(CP::TEvent& ev, RealVector& triggers);
@@ -301,13 +307,15 @@ private:
     /// can be added as well as any backgrounds induced because of ground
     /// loops (etc).
     void GenerateBackgroundSpectrum(CP::TMCChannelId channel,
-                                    ComplexVector& out);
+                                    ComplexVector& inOut,
+                                    ComplexVector& work);
     
 
     /// Generate the noise at discreet frequencies.  This is added an existing
     /// noise vector.
     void GenerateDiscreetSpectrum(CP::TMCChannelId channel,
-                                  ComplexVector& out);
+                                  ComplexVector& inOut,
+                                  ComplexVector& work);
     
     /// Generate the FFT of the electronics response.  This fills the
     /// necessary vectors for use later.
@@ -315,8 +323,7 @@ private:
     
     /// Fill a vector with the shaped values for the charge.
     void ShapeCharge(CP::TMCChannelId channel,
-                     const RealVector& in, const ComplexVector& bkg,
-                     RealVector& out);
+                     const RealVector& in, ComplexVector& out);
 
     /// Translate the shaped wire charge into digitized values.  This adds the
     /// digits to the event.  This step includes the amplification.
@@ -373,10 +380,11 @@ private:
     class DiscreetPeak {
     public:
         int fIndex;
-        double fPeak;
+        double fFrequency;
         double fPower;
         double fPowerSigma;
         double fHalfWidth;
+        double fBackground;
     };
 
     /// A scale factor to apply to the discreet noise peak power.

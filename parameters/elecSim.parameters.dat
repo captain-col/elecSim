@@ -90,7 +90,7 @@ white noise using a Gaussian with this RMS for each time sample.  I haven't
 done the actual calculation, and this is probably an overestimate, but is
 already very small compared to the amplifier (spectral) noise.
 
-< elecSim.simple.wire.noise = 0.001 >
+< elecSim.simple.wire.noise = 60.0 >
 
 An overall scale factor to apply to the discreet noise peak power.
 
@@ -106,8 +106,9 @@ from the wires, and is approximately the power at the highest point in the
 spectrum.  There is a published value of 650 e- per microsecond taken from
 IEEE Trans. on Nuc Sci Vol. 58 no. 5, 2011 "Front-End ASIC for a Liquid
 Argon TPC", but that value is not easily related to this tuning parameter.
+This has the value of the RMS in ADC samples.
 
-< elecSim.simple.spectral.noise = 500 >
+< elecSim.simple.spectral.noise = 2.8 >
 
 The noise is modeled using f^(-alpha) (i.e. pink noise).  This specifies
 the index of the noise.  The classical pink noise would be is 1.0, but it
