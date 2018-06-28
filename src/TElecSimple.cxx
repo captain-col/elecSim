@@ -1508,8 +1508,10 @@ void CP::TElecSimple::GenerateDiscreetSpectrum(CP::TMCChannelId channel,
     for (std::vector<CP::TElecSimple::DiscreetPeak>::iterator p
              = fDiscreetPeaks.begin();
          p != fDiscreetPeaks.end(); ++p) {
-        double power = gRandom->Gaus(p->fPower,p->fPowerSigma);
-        if (power<0.0) continue;
+        double power;
+        do {
+            power = gRandom->Gaus(p->fPower,p->fPowerSigma);
+        } while (power<0.0);
         power = p->fPower+p->fBackground;
         power = std::sqrt(power*power - p->fBackground*p->fBackground);
         power *= fDiscreetScale;
