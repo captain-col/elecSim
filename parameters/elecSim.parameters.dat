@@ -99,6 +99,7 @@ An overall scale factor to apply to the discreet noise peak power.
 The name of the default file of noise peaks.
 
 < elecSim.simple.discreet.file = peaks-run12100.txt >
+< elecSim.simple.noise.file = noise-run12100.txt >
 
 This parameter controls the part of that noise that comes after the
 amplifier shaping.  This should be fitted to the measured noise spectrum

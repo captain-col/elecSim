@@ -302,6 +302,13 @@ CP::TElecSimple::TElecSimple() {
                 "elecSim.simple.discreet.file");
     }
         
+    if (CP::TRuntimeParameters::Get().HasParameter(
+            "elecSim.simple.noise.file")) {
+        fNoiseFile
+            = CP::TRuntimeParameters::Get().GetParameterS(
+                "elecSim.simple.noise.file");
+    }
+        
     // The normalization factor for the charge induced on a wire.
     fWireInductionFactor
         = CP::TRuntimeParameters::Get().GetParameterD(
@@ -322,6 +329,19 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
             std::string name(root);
             name += "/parameters/";
             name += fDiscreetFile;
+            OpenPeaksFile(name);
+        }
+        else {
+            CaptError("ELECSIMROOT is undefined");
+        }
+    }
+    
+    if (fNoiseMap.empty() && !fNoiseFile.empty()) {
+        const char* root = std::getenv("ELECSIMROOT");
+        if (root) {
+            std::string name(root);
+            name += "/parameters/";
+            name += fNoiseFile;
             OpenNoiseFile(name);
         }
         else {
@@ -1512,9 +1532,8 @@ void CP::TElecSimple::GenerateDiscreetSpectrum(CP::TMCChannelId channel,
         do {
             power = gRandom->Gaus(p->fPower,p->fPowerSigma);
         } while (power<0.0);
-        power = p->fPower+p->fBackground;
+        power += p->fBackground;
         power = std::sqrt(power*power - p->fBackground*p->fBackground);
-        power *= fDiscreetScale;
         power /= fDigitSlope;
         power /= std::sqrt(work.size()/fDigitOversample);
         double freq = p->fFrequency;
@@ -1558,9 +1577,27 @@ void CP::TElecSimple::GenerateDiscreetSpectrum(CP::TMCChannelId channel,
         }
 #endif
     }
-    
+
+    // find the RMS of the noise in ADC counts (to match with what is
+    // measured.
+    double noise = 0.0;
+    for (std::size_t i=1; i<work.size(); ++i) {
+        noise += std::norm(work[i]);
+    }
+    noise = std::sqrt(noise/work.size())*fDigitSlope;
+
+    // Find the measured noise for this wire.
+    double targetNoise = noise;
+    int plane = channel.GetSequence();
+    int wire = channel.GetNumber();
+    CP::TElecSimple::NoiseMap::iterator entry
+        = fNoiseMap.find(CP::GeomId::Captain::Wire(plane,wire));
+    if (entry != fNoiseMap.end()) {
+        targetNoise = entry->second.fNoise;
+    }
+
     for (std::size_t i=1; i<work.size()/2; ++i) {
-        inOut[i] += work[i];
+        if (noise > 0.0) inOut[i] += fDiscreetScale*targetNoise*work[i]/noise;
         inOut[inOut.size()-i] = std::conj(inOut[i]); 
     }
 }
@@ -1779,7 +1816,7 @@ CP::TElecSimple::FindDigitRange(int start,
     return digitRange;
 }
 
-void CP::TElecSimple::OpenNoiseFile(std::string name) {
+void CP::TElecSimple::OpenPeaksFile(std::string name) {
     fDiscreetPeaks.clear();
     if (name.empty()) return;
 
@@ -1807,5 +1844,31 @@ void CP::TElecSimple::OpenNoiseFile(std::string name) {
         peak.fFrequency *= unit::hertz;
         peak.fHalfWidth *= unit::hertz;
         fDiscreetPeaks.push_back(peak);
+    }
+}
+
+void CP::TElecSimple::OpenNoiseFile(std::string name) {
+    fNoiseMap.clear();
+    if (name.empty()) return;
+
+    std::ifstream input(name.c_str());
+    if (!input.is_open()) {
+        CaptError("Unable to read " << name);
+        std::exit(1);
+    }
+
+    CaptLog("Reading noise from " << name);
+    
+    std::string line;
+    while (std::getline(input,line)) {
+        line = line.substr(0,line.find("#"));
+        if (line.empty()) continue;
+        std::istringstream parseLine(line);
+        CP::TElecSimple::WireNoise noise;
+        parseLine >> noise.fPlane
+                  >> noise.fWire
+                  >> noise.fNoise
+                  >> noise.fRMS;
+        fNoiseMap[CP::GeomId::Captain::Wire(noise.fPlane,noise.fWire)] = noise;
     }
 }

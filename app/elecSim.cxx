@@ -15,6 +15,10 @@ public:
     void Usage(void) {     }
 
     virtual bool SetOption(std::string option,std::string value="") {
+        if (option=="peaks") {
+            fPeaksFile = value;
+            return true;
+        }
         if (option=="noise") {
             fNoiseFile = value;
             return true;
@@ -26,6 +30,9 @@ public:
         // Make sure the electronics simulated is created.
         if (!fElecSim) {
             fElecSim = new CP::TElecSimple();
+            if (!fPeaksFile.empty()) {
+                fElecSim->OpenPeaksFile(fPeaksFile);
+            }
             if (!fNoiseFile.empty()) {
                 fElecSim->OpenNoiseFile(fNoiseFile);
             }
@@ -41,6 +48,7 @@ public:
 private:
     CP::TElecSimple* fElecSim;
 
+    std::string fPeaksFile;
     std::string fNoiseFile;
 };
 

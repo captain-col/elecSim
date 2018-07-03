@@ -30,7 +30,10 @@ public:
 
     void operator()(CP::TEvent& event);
 
-    /// Set a file of discreet freqency noise sources.
+    /// Set a file of discreet freqency noise peaks.
+    void OpenPeaksFile(std::string name);
+    
+    /// Set a file of the noise RMS on each wire.
     void OpenNoiseFile(std::string name);
     
 private:
@@ -379,11 +382,17 @@ private:
 
     class DiscreetPeak {
     public:
+        // The index of this peak.
         int fIndex;
+        // The frequency that this peak is found at.
         double fFrequency;
+        // The power above the background in arbitrary units for this peak.
         double fPower;
+        // The RMS on the power above the background.
         double fPowerSigma;
+        // The half width at half max of this peak.
         double fHalfWidth;
+        // The background power at the position of this peak.
         double fBackground;
     };
 
@@ -396,6 +405,23 @@ private:
     /// A vector of discreet frequency noise peak positions, widths and
     /// heights.
     std::vector<CP::TElecSimple::DiscreetPeak> fDiscreetPeaks;
+    
+    class WireNoise {
+    public:
+        int fPlane;
+        int fWire;
+        // The RMS noise (in digit counts) of the noise.
+        double fNoise;
+        // The RMS of the RMS noise (in digit counts).
+        double fRMS;
+    };
+
+    /// A default file to open with the noise per wire information.
+    std::string fNoiseFile;
+
+    /// A map of the noise per wire.
+    typedef std::map<CP::TGeometryId,CP::TElecSimple::WireNoise> NoiseMap;
+    NoiseMap fNoiseMap;
     
 };
 #endif
