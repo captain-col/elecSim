@@ -439,10 +439,17 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
     // Check if the stop time needs to be adjusted.
     fStopSimulation = fStartSimulation + chargeBins*timeStep;
 
+    // The charge collected on the wire (per 500 ns).  This has HEP units of
+    // charge (i.e. number of electrons).
     RealVector collectedCharge(chargeBins);
+
+    // The amplitude of the signal at each frequency (after an FFT).  The
+    // units are in the HEP units for voltage (i.e. MEGA volts).
     ComplexVector frequencySpectrum(chargeBins);
     ComplexVector workSpace(chargeBins);
-    RealVector measuredCharge(chargeBins);
+
+    // The output voltage from the amplifier vs time (i.e. MEGA volts)
+    RealVector channelVoltage(chargeBins);
 
     GenerateResponseFFT(chargeBins);
 
@@ -468,7 +475,7 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
             CP::TMCDigit::InfoContainer info;
 
             std::fill(collectedCharge.begin(), collectedCharge.end(), 0.0);
-            std::fill(measuredCharge.begin(), measuredCharge.end(), 0.0);
+            std::fill(channelVoltage.begin(), channelVoltage.end(), 0.0);
             std::fill(frequencySpectrum.begin(), frequencySpectrum.end(),
                       std::complex<double>(0.0,0.0));
             std::fill(workSpace.begin(), workSpace.end(),
@@ -485,10 +492,10 @@ void CP::TElecSimple::operator()(CP::TEvent& event) {
             GenerateBackgroundSpectrum(channel,frequencySpectrum,workSpace);
             GenerateDiscreetSpectrum(channel,frequencySpectrum,workSpace);
 
-            InverseFFT(frequencySpectrum,measuredCharge);
+            InverseFFT(frequencySpectrum,channelVoltage);
 
             // Apply the digitization to the resulting charge.
-            DigitizeWire(event,channel,measuredCharge,triggerTimes,
+            DigitizeWire(event,channel,channelVoltage,triggerTimes,
                          contrib,info);
 
             
@@ -890,9 +897,9 @@ void CP::TElecSimple::DigitizeLight(
 
     std::size_t pmtBins = (fStopSimulation-fStartSimulation)/fPMTStep;
     
-    RealVector measuredCharge;
-    if (measuredCharge.size() < pmtBins) {
-        measuredCharge.resize(pmtBins);
+    RealVector channelVoltage;
+    if (channelVoltage.size() < pmtBins) {
+        channelVoltage.resize(pmtBins);
     }
 
     // Add the signal for each photon.
@@ -920,7 +927,7 @@ void CP::TElecSimple::DigitizeLight(
             sig *= fAmplifierPMTGain;
             gainSignal += sig;
             sigMax = std::max(sigMax,sig);
-            measuredCharge[bin] += sig;
+            channelVoltage[bin] += sig;
         }
     }
     
@@ -938,7 +945,9 @@ void CP::TElecSimple::DigitizeLight(
         // This is the last bin in the digitization window
         int stopBin = startBin + (stopTime-startTime)/fPMTStep;
         if (startBin < 0) startBin = 0;
-        if (stopBin > (int) measuredCharge.size()) stopBin = measuredCharge.size();
+        if (stopBin > (int) channelVoltage.size()) {
+            stopBin = channelVoltage.size();
+        }
         // This is the first bin that might end up in a new digit.
         int lastStop = startBin;
         // The threshold to save a region of the FADC.  If this is negative,
@@ -957,7 +966,7 @@ void CP::TElecSimple::DigitizeLight(
                 // variable is the bin where the threshold was crossed.
                 int tBin;
                 for (tBin=digitRange.first; tBin<digitRange.second; ++tBin) {
-                    if (measuredCharge[tBin] > threshold) {
+                    if (channelVoltage[tBin] > threshold) {
                         digitRange.first = std::max(digitRange.first,
                                                     tBin - preThresholdBins);
                         break;
@@ -973,7 +982,7 @@ void CP::TElecSimple::DigitizeLight(
                 bool zeroRangeFound = false;
                 do {
                     // Move to the first bin that is below threshold.
-                    while (measuredCharge[tBin] > threshold
+                    while (channelVoltage[tBin] > threshold
                            && tBin < digitRange.second) ++tBin;
                     // Check if there is a long section of zeros.  This allows
                     // room for the next preThresholdBins region.
@@ -982,7 +991,7 @@ void CP::TElecSimple::DigitizeLight(
                          i<tBin+postThresholdBins+preThresholdBins
                              && i<digitRange.second;
                          ++i) {
-                        if (measuredCharge[i] > threshold) {
+                        if (channelVoltage[i] > threshold) {
                             tBin = i;
                             zeroRangeFound = false;
                             break;
@@ -1001,7 +1010,7 @@ void CP::TElecSimple::DigitizeLight(
             double digitizedTotal = 0.0;
             CP::TPulseDigit::Vector adc;
             for (int bin = digitRange.first; bin < digitRange.second; ++bin) {
-                double val = measuredCharge[bin];
+                double val = channelVoltage[bin];
                 digitizedTotal += val;
                 // Shift the baseline to the pedestal value.
                 val += pedestal;
@@ -1720,9 +1729,8 @@ void CP::TElecSimple::DigitizeWire(
             int stride = (int) (fDigitStep/timeStep + 0.5);
             for (int bin = digitRange.first;
                  bin < digitRange.second-stride; bin += stride) {
-                double val = 0;
-                val = in[bin];
-                val *= fDigitSlope;
+                // The units of val are in (floating point) ADC counts.
+                double val = in[bin]*fDigitSlope;
                 // Shift the baseline to the pedestal value.
                 val += pedestal;
                 if (fDigitNoise>0.01) val += gRandom->Gaus(0,fDigitNoise);
