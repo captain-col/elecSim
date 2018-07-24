@@ -76,7 +76,7 @@ ms (80 us) lifetime during the mini-CAPTAIN low intensity neutron run (Aug
 
 < elecSim.simple.drift.life = 1.3 ms >
 < elecSim.simple.drift.life.capt = 1.3 ms >
-< elecSim.simple.drift.life.mini = 0.08 ms >
+< elecSim.simple.drift.life.mini = 0.074 ms >
 
 The charge induction factor for the induction wires.  This is assumed to be
 the same for the U and V planes since they have similar electrical
